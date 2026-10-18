@@ -1,0 +1,20 @@
+[
+    {
+        "guid": "83abdf93-106c-418c-be99-ed5dad2ef9c6",
+        "name": "JellyChannels",
+        "description": "Crea canales de TV lineales (estilo Tunarr / ErsatzTV) a partir de la propia biblioteca de Jellyfin: parrilla determinista, EPG XMLTV y lista M3U para Live TV. Opcionales y desactivados por defecto: un stream continuo remuxado con el ffmpeg de Jellyfin (copia lo compatible y recodifica el resto a H.264/AAC) y v\u00eddeos de YouTube con descarga bajo demanda (requiere yt-dlp).\n",
+        "overview": "Canales de TV lineales a partir de la biblioteca",
+        "owner": "srjea",
+        "category": "LiveTV",
+        "versions": [
+            {
+                "version": "0.6.0.0",
+                "changelog": "v0.6: fuentes de YouTube con descarga bajo demanda (yt-dlp).\nv0.5: stream continuo opcional (remux con ffmpeg) sin exigir c\u00f3decs iguales.\nv0.1: canales, parrilla, M3U y XMLTV.\n",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://raw.githubusercontent.com/SrJea/jellytv/main/repo/jellychannels/jellychannels_0.6.0.0.zip",
+                "checksum": "1bba503fc52e1ff2cf5184453c405ed2",
+                "timestamp": "2026-10-18T17:43:37Z"
+            }
+        ]
+    }
+]

@@ -210,7 +210,10 @@ Jellyfin.Plugin.JellyChannels/
 │   ├── player.js
 │   └── player.css
 └── Jellyfin.Plugin.JellyChannels.csproj
-Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén)
+Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén, remux, YouTube)
+repo/                                 # Repositorio de plugins de Jellyfin: manifest.json + ZIP por versión
+scripts/publish-repo.sh               # Construye con jprm y añade la versión a repo/
+.github/workflows/publish-repo.yaml   # Lo ejecuta al subir la versión en build.yaml a main
 ```
 
 ## API
@@ -261,7 +264,7 @@ Si `id` de un canal no se indica al crearlo, se genera a partir del nombre (`Can
 9. **Configuración**: página de ajustes para crear y editar canales, elegir fuentes, logo, marca de agua y carpeta de anuncios.
 10. **Opcional**: remux `-c copy` para Live TV continuo, con interruptor en ajustes.
 11. **YouTube**: `YoutubeCache` con lectura de metadatos, tarea de prefetch, descarga con `yt-dlp`, política de retención y límite de disco. Endpoint de caché con soporte `Range`.
-12. **Empaquetado**: generar el ZIP del plugin con su `meta.json` y publicar un manifiesto de repositorio para instalarlo desde Jellyfin.
+12. **Empaquetado**: generar el ZIP del plugin con su `meta.json` y publicar un manifiesto de repositorio para instalarlo desde Jellyfin. Hecho: `scripts/publish-repo.sh` y `repo/`.
 
 ## Compilar y probar
 
@@ -274,7 +277,27 @@ La DLL queda en `Jellyfin.Plugin.JellyChannels/bin/Release/net10.0/Jellyfin.Plug
 
 Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así que no necesitan ffmpeg instalado.
 
-## Instalación (una vez compilado)
+## Instalación desde el repositorio de Jellyfin
+
+El proyecto es su propio repositorio de plugins: `repo/manifest.json` y los ZIP de cada versión en `repo/jellychannels/`.
+
+1. En Jellyfin: Panel > Plugins > Repositorios > `+`.
+   - Nombre: `JellyChannels`.
+   - URL: `https://raw.githubusercontent.com/SrJea/jellytv/main/repo/manifest.json`.
+2. Panel > Plugins > Catálogo > JellyChannels (categoría *Live TV*) > Instalar y reiniciar Jellyfin.
+3. Panel > Plugins > JellyChannels para configurarlo. Cuando salga una versión nueva, Jellyfin la ofrecerá como cualquier otra actualización.
+
+**Requisito: el repositorio de GitHub tiene que ser público.** Jellyfin descarga el manifiesto y el ZIP sin credenciales, y `raw.githubusercontent.com` devuelve 404 para un repo privado. Si no quieres publicarlo, sirve la carpeta `repo/` desde cualquier web que alcance tu servidor (nginx, otro hosting estático) y regenera el manifiesto con esa URL: `REPO_BASE_URL=https://mi-servidor/repo FORCE=1 scripts/publish-repo.sh`.
+
+**Publicar una versión nueva**
+
+1. Sube `version` en `build.yaml` y en `Directory.Build.props` (deben coincidir) y añade la línea al `changelog` de `build.yaml`.
+2. Súbelo a `main`. El workflow `.github/workflows/publish-repo.yaml` pasa los tests, construye el ZIP con [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager), lo añade a `repo/` y lo commitea.
+3. A mano, sin Actions: `pip install jprm && scripts/publish-repo.sh` y commitea `repo/`.
+
+El script se niega a republicar una versión que ya está en el manifiesto: cambiaría el ZIP y su checksum bajo los pies de quien ya la tenga instalada. Si hay que corregir algo, publica una versión nueva.
+
+## Instalación manual (una vez compilado)
 
 1. Copiar `Jellyfin.Plugin.JellyChannels.dll` a `<datos de Jellyfin>/plugins/JellyChannels_0.6.0.0/`.
 2. Reiniciar Jellyfin.
