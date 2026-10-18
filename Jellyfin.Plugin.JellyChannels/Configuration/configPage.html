@@ -34,7 +34,7 @@
             #JellyChannelsConfigPage .jcResultRow.jcAdded { opacity: 0.5; cursor: default; }
             #JellyChannelsConfigPage details.jcSection { border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 0.5em; padding: 0.4em 1em; margin: 0.6em 0; }
             #JellyChannelsConfigPage details.jcSection > summary { cursor: pointer; padding: 0.6em 0; font-weight: 600; }
-            #JellyChannelsConfigPage .jcJson { font-family: monospace; width: 100%; min-height: 14em; }
+            #JellyChannelsConfigPage .jcJson { font-family: monospace; width: 100%; min-height: 14em; box-sizing: border-box; padding: 0.6em; color: inherit; background: rgba(128, 128, 128, 0.15); border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 0.3em; }
             #JellyChannelsConfigPage .jcLogoPreview { max-height: 3em; margin-top: 0.4em; border-radius: 0.3em; }
             @media (max-width: 30em) {
                 #JellyChannelsConfigPage .jcGrid2 { grid-template-columns: 1fr; gap: 0; }
@@ -361,7 +361,7 @@
 
                 function loadLibraryTags() {
                     if (state.tags) { return Promise.resolve(state.tags); }
-                    return ApiClient.getJSON(ApiClient.getUrl('Items/Filters', { UserId: userId(), Recursive: true, IncludeItemTypes: 'Series,Movie,BoxSet' })).then(function (filters) {
+                    return ApiClient.getJSON(ApiClient.getUrl('Items/Filters2', { UserId: userId(), IncludeItemTypes: 'Series,Movie,BoxSet' })).then(function (filters) {
                         state.tags = (filters.Tags || []).slice().sort(function (a, b) { return a.localeCompare(b); });
                         return state.tags;
                     }).catch(function () {
@@ -409,7 +409,7 @@
 
                 function thumbHtml(description) {
                     if (description.image) {
-                        return '<img class="jcThumb" loading="lazy" alt="" src="' + escapeHtml(description.image) + '" />';
+                        return '<img class="jcThumb" loading="lazy" alt="" data-icon="' + escapeHtml(description.icon || 'image') + '" src="' + escapeHtml(description.image) + '" />';
                     }
                     return '<div class="jcThumb">' + icon(description.icon) + '</div>';
                 }
@@ -449,6 +449,7 @@
 
                 function addSource(source) {
                     if (hasSource(source)) { return false; }
+                    showError('');
                     state.channel.sources.push(source);
                     renderSources();
                     syncJson();
@@ -780,7 +781,21 @@
 
                 // ---- Eventos -----------------------------------------------------------------------------------
 
-                $('#jcName').addEventListener('input', function () { state.channel.name = this.value; syncJson(); });
+                // Una miniatura que no carga (sin red, borrada...) se cambia por el icono de su tipo en vez de dejar la imagen rota.
+                page.addEventListener('error', function (event) {
+                    var image = event.target;
+                    if (!image || image.tagName !== 'IMG') { return; }
+                    if (image.id === 'jcLogoPreview') {
+                        image.hidden = true;
+                    } else if (image.classList.contains('jcThumb')) {
+                        var placeholder = document.createElement('div');
+                        placeholder.className = 'jcThumb';
+                        placeholder.innerHTML = icon(image.getAttribute('data-icon') || 'image');
+                        image.replaceWith(placeholder);
+                    }
+                }, true);
+
+                $('#jcName').addEventListener('input', function () { showError(''); state.channel.name = this.value; syncJson(); });
                 $('#jcNumber').addEventListener('input', function () { state.channel.number = parseInt(this.value, 10) || 0; syncJson(); });
                 $('#jcEpgDays').addEventListener('input', function () { state.channel.epgDays = parseInt(this.value, 10) || 3; syncJson(); });
                 $('#jcMode').addEventListener('change', function () {
