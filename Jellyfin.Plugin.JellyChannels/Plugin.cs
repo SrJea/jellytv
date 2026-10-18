@@ -52,6 +52,13 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             new PluginPageInfo
             {
                 Name = Name,
+
+                // Sin EnableInMainMenu la página solo se alcanza desde Complementos > JellyChannels. DisplayName es la
+                // etiqueta del menú lateral y MenuIcon el nombre de un icono de Material Icons.
+                DisplayName = Name,
+                EnableInMainMenu = true,
+                MenuSection = "server",
+                MenuIcon = "live_tv",
                 EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
             }
         ];

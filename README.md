@@ -284,7 +284,7 @@ Cada versión se publica como un release de GitHub con dos assets: el ZIP del pl
    - Nombre: `JellyChannels`.
    - URL: `https://github.com/SrJea/jellytv/releases/latest/download/manifest.json`.
 2. Panel > Plugins > Catálogo > JellyChannels (categoría *Live TV*) > Instalar y reiniciar Jellyfin.
-3. Panel > Plugins > JellyChannels para configurarlo. Cuando salga una versión nueva, Jellyfin la ofrecerá como cualquier otra actualización.
+3. Configúralo desde la entrada *JellyChannels* del menú lateral, en *Complementos* (o desde Complementos > JellyChannels > Ajustes). Cuando salga una versión nueva, Jellyfin la ofrecerá como cualquier otra actualización.
 
 Si prefieres instalarlo a mano, descarga el ZIP del release y descomprímelo en `<datos de Jellyfin>/plugins/JellyChannels_<versión>/`.
 
