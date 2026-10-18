@@ -24,7 +24,14 @@
                             <input id="EnableRemux" type="checkbox" is="emby-checkbox" />
                             <span>Stream continuo (remux con ffmpeg)</span>
                         </label>
-                        <div class="fieldDescription checkboxFieldDescription">Usa el ffmpeg de Jellyfin con <code>-c copy</code>, sin transcodificar. Hace que el tuner de Live TV reciba un stream continuo que empieza donde toca. Hay un proceso ffmpeg por espectador mientras ve el canal. Los ficheros de un mismo canal deberían compartir códecs.</div>
+                        <div class="fieldDescription checkboxFieldDescription">Usa el ffmpeg de Jellyfin. Hace que el tuner de Live TV reciba un stream continuo que empieza donde toca. Hay un proceso ffmpeg por espectador mientras ve el canal. Lo que ya es H.264 y AAC se copia sin recodificar.</div>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="RemuxAllowTranscode" type="checkbox" is="emby-checkbox" />
+                            <span>Recodificar lo que no sea H.264 / AAC</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Así los ficheros de un canal pueden tener códecs distintos. Consume CPU solo mientras se emite un fichero que lo necesite. Si lo desactivas, todo se copia y los ficheros de un canal deben compartir códecs.</div>
                     </div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="MaxRemuxStreams">Máximo de streams remuxados a la vez</label>
@@ -156,6 +163,7 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         page.querySelector('#AllowAnonymousGuide').checked = config.AllowAnonymousGuide;
                         page.querySelector('#EnableRemux').checked = config.EnableRemux;
+                        page.querySelector('#RemuxAllowTranscode').checked = config.RemuxAllowTranscode;
                         page.querySelector('#MaxRemuxStreams').value = config.MaxRemuxStreams;
                         page.querySelector('#LibraryCacheMinutes').value = config.LibraryCacheMinutes;
                         page.querySelector('#EpgCacheMinutes').value = config.EpgCacheMinutes;
@@ -171,6 +179,7 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         config.AllowAnonymousGuide = page.querySelector('#AllowAnonymousGuide').checked;
                         config.EnableRemux = page.querySelector('#EnableRemux').checked;
+                        config.RemuxAllowTranscode = page.querySelector('#RemuxAllowTranscode').checked;
                         config.MaxRemuxStreams = Math.max(1, parseInt(page.querySelector('#MaxRemuxStreams').value, 10) || 1);
                         config.LibraryCacheMinutes = parseInt(page.querySelector('#LibraryCacheMinutes').value, 10) || 0;
                         config.EpgCacheMinutes = parseInt(page.querySelector('#EpgCacheMinutes').value, 10) || 0;

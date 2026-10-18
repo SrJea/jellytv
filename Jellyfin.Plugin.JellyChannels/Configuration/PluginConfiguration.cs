@@ -20,6 +20,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool EnableRemux { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether el remux recodifica a H.264 / AAC las pistas que no lo sean.
+    /// Si está desactivado, copia siempre y los ficheros de un canal deben compartir códecs.
+    /// </summary>
+    public bool RemuxAllowTranscode { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets cuántos streams <c>live.ts</c> pueden estar abiertos a la vez; cada uno es un proceso ffmpeg.
     /// </summary>
     public int MaxRemuxStreams { get; set; } = 2;

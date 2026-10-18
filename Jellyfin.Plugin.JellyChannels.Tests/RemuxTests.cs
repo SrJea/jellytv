@@ -31,9 +31,10 @@ public class RemuxTests
         Assert.Equal("/media/Mi Serie/S01 \"E01\".mkv", args[input + 1]);
         Assert.Equal("90.000", args[limit + 1]);
         Assert.Equal("1234.500", args[args.ToList().IndexOf("-output_ts_offset") + 1]);
-        Assert.Equal("copy", args[args.ToList().IndexOf("-c") + 1]);
+        Assert.Equal("copy", args[args.ToList().IndexOf("-c:v") + 1]);
+        Assert.Equal("copy", args[args.ToList().IndexOf("-c:a") + 1]);
         Assert.Equal("pipe:1", args[^1]);
-        Assert.DoesNotContain(args, a => a is "-c:v" or "-vcodec" or "-acodec" or "libx264");
+        Assert.DoesNotContain(args, a => a is "-vcodec" or "-acodec" or "libx264" or "aac");
     }
 
     [Theory]
@@ -97,7 +98,99 @@ public class RemuxTests
 
         await h.RunAsync(stopAfterRequests: 2);
 
-        Assert.Equal(TimeSpan.FromSeconds(45).Add(TimeSpan.FromMilliseconds(40)), h.Runner.Requests[1].TimestampOffset);
+        Assert.Equal(TimeSpan.FromSeconds(45).Add(TimeSpan.FromMilliseconds(200)), h.Runner.Requests[1].TimestampOffset);
+    }
+
+    [Fact]
+    public async Task Stream_CopiesCompatibleItemsAndTranscodesTheRest()
+    {
+        var h = new Harness(Clip("h264", 1), Clip("hevc", 1), Clip("opus", 1));
+        h.Sources.Handler = item => item.Title switch
+        {
+            "hevc" => new PlaybackSource(item.Path!, new StreamInfo("hevc", 10), new StreamInfo("aac", Channels: 2)),
+            "opus" => new PlaybackSource(item.Path!, new StreamInfo("h264", 8), new StreamInfo("opus", Channels: 2)),
+            _ => new PlaybackSource(item.Path!, new StreamInfo("h264", 8), new StreamInfo("aac", Channels: 2))
+        };
+
+        await h.RunAsync(stopAfterRequests: 3);
+
+        Assert.Equal(RemuxPlan.Copy, h.Runner.Requests[0].Plan);
+        Assert.Equal(new RemuxPlan(true, false), h.Runner.Requests[1].Plan);
+        Assert.Equal(new RemuxPlan(false, true), h.Runner.Requests[2].Plan);
+    }
+
+    [Fact]
+    public async Task Stream_AlwaysCopiesWhenTranscodingIsNotAllowed()
+    {
+        var h = new Harness(Clip("hevc", 1)) { AllowTranscode = false };
+        h.Sources.Handler = item => new PlaybackSource(item.Path!, new StreamInfo("hevc"), new StreamInfo("dts"));
+
+        await h.RunAsync(stopAfterRequests: 1);
+
+        Assert.Equal(RemuxPlan.Copy, h.Runner.Requests[0].Plan);
+    }
+
+    [Theory]
+    [InlineData("h264", 8, "aac", false, false)]
+    [InlineData("h264", null, "aac", false, false)]
+    [InlineData("h264", 10, "aac", true, false)]
+    [InlineData("hevc", 8, "aac", true, false)]
+    [InlineData("av1", 8, "ac3", true, true)]
+    [InlineData("vp9", 8, "opus", true, true)]
+    [InlineData("mpeg4", 8, "mp3", true, true)]
+    [InlineData("h264", 8, "eac3", false, true)]
+    [InlineData("h264", 8, null, false, false)]
+    [InlineData(null, null, "aac", false, false)]
+    public void Plan_CopiesOnlyH264EightBitAndAac(string? video, int? bits, string? audio, bool transcodeVideo, bool transcodeAudio)
+    {
+        var source = new PlaybackSource("/a.mkv", video is null ? null : new StreamInfo(video, bits), audio is null ? null : new StreamInfo(audio, Channels: 2));
+
+        var plan = RemuxPlan.Decide(source, allowTranscode: true);
+
+        Assert.Equal(transcodeVideo, plan.TranscodeVideo);
+        Assert.Equal(transcodeAudio, plan.TranscodeAudio);
+    }
+
+    [Theory]
+    [InlineData("yuv420p", false)]
+    [InlineData("yuvj420p", false)]
+    [InlineData("YUV420P", false)]
+    [InlineData(null, false)]
+    [InlineData("yuv444p", true)]
+    [InlineData("yuv422p", true)]
+    public void Plan_RecodesH264ThatIsNotFourTwoZero(string? pixelFormat, bool transcodeVideo)
+    {
+        var source = new PlaybackSource("/a.mkv", new StreamInfo("h264", 8, PixelFormat: pixelFormat), new StreamInfo("aac", Channels: 2));
+
+        Assert.Equal(transcodeVideo, RemuxPlan.Decide(source, allowTranscode: true).TranscodeVideo);
+    }
+
+    [Fact]
+    public void Plan_TranscodesEverythingWhenTheTracksAreUnknown()
+        => Assert.Equal(new RemuxPlan(true, true), RemuxPlan.Decide(new PlaybackSource("/a.mkv", null, null, StreamsKnown: false), allowTranscode: true));
+
+    [Fact]
+    public void Plan_DownmixesAudioThatAacCannotEncode()
+    {
+        var source = new PlaybackSource("/a.mkv", new StreamInfo("h264", 8), new StreamInfo("truehd", Channels: 10));
+
+        Assert.Equal(new RemuxPlan(false, true, 2), RemuxPlan.Decide(source, allowTranscode: true));
+    }
+
+    [Fact]
+    public void Arguments_TranscodeOnlyTheTracksThatNeedIt()
+    {
+        var copyVideo = RemuxArguments.Build(new RemuxRequest("/a.mkv", TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, new RemuxPlan(false, true, 2))).ToList();
+        var copyAudio = RemuxArguments.Build(new RemuxRequest("/a.mkv", TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, new RemuxPlan(true, false))).ToList();
+
+        Assert.Equal("copy", copyVideo[copyVideo.IndexOf("-c:v") + 1]);
+        Assert.Equal("aac", copyVideo[copyVideo.IndexOf("-c:a") + 1]);
+        Assert.Equal("2", copyVideo[copyVideo.IndexOf("-ac") + 1]);
+        Assert.Equal("libx264", copyAudio[copyAudio.IndexOf("-c:v") + 1]);
+        Assert.Equal("yuv420p", copyAudio[copyAudio.IndexOf("-pix_fmt") + 1]);
+        Assert.Equal("0", copyAudio[copyAudio.IndexOf("-bf") + 1]);
+        Assert.Equal("copy", copyAudio[copyAudio.IndexOf("-c:a") + 1]);
+        Assert.DoesNotContain("-ac", copyAudio);
     }
 
     [Fact]
@@ -158,7 +251,7 @@ public class RemuxTests
     public void Slots_AreLimitedAndReleased()
     {
         int max = 2;
-        var service = new RemuxService(new FakeRunner(new FakeTimeProvider()), NullLogger<RemuxService>.Instance, new FakeTimeProvider(), () => max);
+        var service = new RemuxService(new FakeRunner(new FakeTimeProvider()), new FakeSources(), NullLogger<RemuxService>.Instance, new FakeTimeProvider(), () => max, () => true);
 
         var first = service.TryEnter();
         var second = service.TryEnter();
@@ -184,7 +277,8 @@ public class RemuxTests
         {
             Time = new FakeTimeProvider(TestItems.Start);
             Runner = new FakeRunner(Time);
-            Service = new RemuxService(Runner, NullLogger<RemuxService>.Instance, Time, () => 2);
+            Sources = new FakeSources();
+            Service = new RemuxService(Runner, Sources, NullLogger<RemuxService>.Instance, Time, () => 2, () => AllowTranscode);
             _engine = new ScheduleEngine(PlaybackMode.Sequential, 1, TestItems.Start, items);
         }
 
@@ -193,6 +287,10 @@ public class RemuxTests
         public FakeRunner Runner { get; }
 
         public RemuxService Service { get; }
+
+        public FakeSources Sources { get; }
+
+        public bool AllowTranscode { get; set; } = true;
 
         public async Task RunAsync(int stopAfterRequests)
         {
@@ -220,6 +318,15 @@ public class RemuxTests
             {
             }
         }
+    }
+
+    private sealed class FakeSources : IPlaybackSourceResolver
+    {
+        public Func<ScheduleItem, PlaybackSource?> Handler { get; set; } = item => item.Path is null
+            ? null
+            : new PlaybackSource(item.Path, new StreamInfo("h264", 8), new StreamInfo("aac", Channels: 2));
+
+        public PlaybackSource? Resolve(ScheduleItem item) => Handler(item);
     }
 
     private sealed class FakeRunner : IFfmpegRunner

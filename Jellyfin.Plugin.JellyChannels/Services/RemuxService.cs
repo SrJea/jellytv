@@ -18,13 +18,17 @@ public class RemuxService
     private static readonly TimeSpan _minSlot = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan _retryDelay = TimeSpan.FromSeconds(1);
 
-    // Hueco entre el último PTS de un tramo y el primero del siguiente: más o menos un fotograma.
-    private static readonly TimeSpan _frameGap = TimeSpan.FromMilliseconds(40);
+    // Hueco entre el último PTS de un tramo y el primero del siguiente. Un fichero copiado con fotogramas B
+    // empieza con un DTS por debajo de su PTS (el retardo de reordenación, de dos o tres fotogramas); con
+    // este margen ese DTS no cae antes del final del tramo anterior.
+    private static readonly TimeSpan _boundaryGap = TimeSpan.FromMilliseconds(200);
 
     private readonly IFfmpegRunner _runner;
+    private readonly IPlaybackSourceResolver _sources;
     private readonly ILogger<RemuxService> _logger;
     private readonly TimeProvider _timeProvider;
     private readonly Func<int> _maxStreams;
+    private readonly Func<bool> _allowTranscode;
     private readonly Lock _lock = new();
     private int _active;
 
@@ -32,18 +36,33 @@ public class RemuxService
     /// Initializes a new instance of the <see cref="RemuxService"/> class.
     /// </summary>
     /// <param name="runner">Ejecutor de ffmpeg.</param>
+    /// <param name="sources">Localiza el fichero y las pistas de cada item.</param>
     /// <param name="logger">Logger.</param>
-    public RemuxService(IFfmpegRunner runner, ILogger<RemuxService> logger)
-        : this(runner, logger, TimeProvider.System, () => Plugin.Instance?.Configuration.MaxRemuxStreams ?? DefaultMaxStreams)
+    public RemuxService(IFfmpegRunner runner, IPlaybackSourceResolver sources, ILogger<RemuxService> logger)
+        : this(
+            runner,
+            sources,
+            logger,
+            TimeProvider.System,
+            () => Plugin.Instance?.Configuration.MaxRemuxStreams ?? DefaultMaxStreams,
+            () => Plugin.Instance?.Configuration.RemuxAllowTranscode ?? true)
     {
     }
 
-    internal RemuxService(IFfmpegRunner runner, ILogger<RemuxService> logger, TimeProvider timeProvider, Func<int> maxStreams)
+    internal RemuxService(
+        IFfmpegRunner runner,
+        IPlaybackSourceResolver sources,
+        ILogger<RemuxService> logger,
+        TimeProvider timeProvider,
+        Func<int> maxStreams,
+        Func<bool> allowTranscode)
     {
         _runner = runner;
+        _sources = sources;
         _logger = logger;
         _timeProvider = timeProvider;
         _maxStreams = maxStreams;
+        _allowTranscode = allowTranscode;
     }
 
     /// <summary>
@@ -116,9 +135,10 @@ public class RemuxService
                 continue;
             }
 
-            if (string.IsNullOrEmpty(entry.Item.Path))
+            var source = _sources.Resolve(entry.Item);
+            if (source is null)
             {
-                _logger.LogWarning("«{Title}» no es un fichero local y no se puede remuxar; se salta su hueco", entry.Item.Title);
+                _logger.LogWarning("«{Title}» no es un fichero local o aún no está disponible; se salta su hueco", entry.Item.Title);
                 if (++badSlots >= MaxBadSlotsInARow)
                 {
                     return;
@@ -131,7 +151,17 @@ public class RemuxService
             // La línea de tiempo del stream nunca retrocede: con -c copy un tramo puede empezar hasta
             // un GOP antes del offset pedido y acabar después de su hueco.
             var timestamp = TimeSpan.FromTicks(Math.Max((now - streamStart).Ticks, timelineEnd.Ticks));
-            var request = new RemuxRequest(entry.Item.Path, TimeSpan.FromTicks(entry.OffsetTicksAt(now)), remaining, timestamp);
+            var plan = RemuxPlan.Decide(source, _allowTranscode());
+            if (plan.NeedsTranscoding)
+            {
+                _logger.LogInformation(
+                    "«{Title}» se recodifica ({Video} vídeo, {Audio} audio) para mantener H.264/AAC en todo el stream",
+                    entry.Item.Title,
+                    plan.TranscodeVideo ? "sí" : "no",
+                    plan.TranscodeAudio ? "sí" : "no");
+            }
+
+            var request = new RemuxRequest(source.Path, TimeSpan.FromTicks(entry.OffsetTicksAt(now)), remaining, timestamp, plan);
 
             var runStart = _timeProvider.GetTimestamp();
             var result = await _runner.RunAsync(request, output, cancellationToken).ConfigureAwait(false);
@@ -139,7 +169,7 @@ public class RemuxService
 
             // Un tramo puede contener más tiempo del que tarda en emitirse (el contenido anterior al
             // salto de -ss sale de golpe), así que si el ejecutor sabe el último PTS se usa ese.
-            timelineEnd = TimeSpan.FromTicks(Math.Max(timelineEnd.Ticks, (result.LastTimestamp is TimeSpan last ? last + _frameGap : timestamp + elapsed).Ticks));
+            timelineEnd = TimeSpan.FromTicks(Math.Max(timelineEnd.Ticks, (result.LastTimestamp is TimeSpan last ? last + _boundaryGap : timestamp + elapsed).Ticks));
 
             if (result.ExitCode == 0 && result.BytesWritten > 0)
             {

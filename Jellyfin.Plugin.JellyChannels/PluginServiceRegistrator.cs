@@ -17,6 +17,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ILibraryResolver, LibraryResolver>();
         serviceCollection.AddSingleton<ScheduleService>();
         serviceCollection.AddSingleton<GuideService>();
+        serviceCollection.AddSingleton<IPlaybackSourceResolver, PlaybackSourceResolver>();
         serviceCollection.AddSingleton<IFfmpegRunner, FfmpegProcessRunner>();
         serviceCollection.AddSingleton<RemuxService>();
     }

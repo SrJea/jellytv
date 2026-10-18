@@ -83,7 +83,7 @@ Plugin ligero para Jellyfin que crea canales de TV lineales (estilo Tunarr / Ers
 ### 5. Sobre ffmpeg
 
 - Modo por defecto: no se usa.
-- Opcional y desactivado por defecto (v0.5): remux `-c copy` usando el ffmpeg que ya trae Jellyfin, para dar un stream continuo a clientes que solo hablan Live TV. No transcodifica, consume muy poca CPU. Detalles en la sección *Remux* más abajo.
+- Opcional y desactivado por defecto (v0.5): remux usando el ffmpeg que ya trae Jellyfin, para dar un stream continuo a clientes que solo hablan Live TV. Copia las pistas que ya son H.264 y AAC (muy poca CPU) y recodifica solo las que no lo son, para que los ficheros de un canal puedan tener códecs distintos. Detalles en la sección *Remux* más abajo.
 - Marca de agua grabada en vídeo: solo sería posible recodificando. Queda fuera del alcance.
 
 ### 6. Vídeos de YouTube (descarga y borrado a demanda)
@@ -122,16 +122,19 @@ Se activa en los ajustes del plugin (*Stream continuo*). Añade `GET /JellyChann
 
 - Usa el ffmpeg de Jellyfin (`IMediaEncoder.EncoderPath`). No hay ruta que configurar ni binario que instalar.
 - Un proceso ffmpeg por espectador y solo mientras ve el canal. Cuando el cliente se desconecta, se mata el proceso. No hay procesos permanentes por canal.
-- Cada item es un tramo `ffmpeg -re -ss <offset> -i <fichero> -c copy -f mpegts`: copia de pistas, sin recodificar, a velocidad real, con la primera pista de vídeo y la primera de audio. La parrilla decide qué tramo toca, y los fallos se tratan así: si un fichero no se puede remuxar se reintenta dos veces y se espera al siguiente item; tras tres huecos seguidos imposibles se cierra el stream.
+- Cada item es un tramo `ffmpeg -re -ss <offset> -i <fichero> ... -f mpegts` a velocidad real, con la primera pista de vídeo y la primera de audio.
+- **Códecs**: el stream sale siempre en H.264 (8 bits, 4:2:0) y AAC, así que el reproductor nunca ve un cambio de códec a mitad. Antes de cada tramo se leen las pistas del fichero (de la base de datos de Jellyfin) y se decide pista a pista: si ya es H.264 de 8 bits en 4:2:0 se copia; si no (HEVC, VP9, AV1, MPEG-4, H.264 de 10 bits o 4:4:4...) se recodifica con `libx264 -preset veryfast -crf 23 -bf 0` y keyframes cada 2 s. Lo mismo con el audio: AAC se copia y el resto se recodifica a AAC 192k. Si no se pueden leer las pistas, se recodifica todo.
+- Se puede desactivar la recodificación en los ajustes (*Recodificar lo que no sea H.264 / AAC*). Entonces todo se copia y los ficheros de un canal deben compartir códecs, como en la primera versión del remux. La parrilla decide qué tramo toca, y los fallos se tratan así: si un fichero no se puede remuxar se reintenta dos veces y se espera al siguiente item; tras tres huecos seguidos imposibles se cierra el stream.
 - Las marcas de tiempo del stream nunca retroceden: cada tramo empieza en `max(reloj, final del tramo anterior)` y el muxer marca el salto con el *discontinuity indicator*.
 - Al abrir el canal desde Live TV, Jellyfin mantiene el stream (y por tanto el ffmpeg del plugin) abierto hasta que el cliente cierra la reproducción.
 - Límite de streams simultáneos configurable (2 por defecto). Pasado el límite, `live.ts` responde 503 con `Retry-After`.
 
 **Límites (importantes)**
 
-- Con `-c copy` el salto de `-ss` cae en el keyframe anterior, así que al sintonizar a mitad de un item el stream puede empezar hasta un GOP antes de lo que dice la guía (unos segundos en la mayoría de ficheros). El desfase no se acumula: cada tramo siguiente se recalcula con el reloj.
-- Entre items hay un pequeño hueco (la puesta en marcha de ffmpeg, décimas de segundo).
-- No se recodifica, así que los ficheros de un canal deberían compartir códecs. Si cambian entre items (por ejemplo h264 y hevc, o AAC y AC3), el PMT cambia a mitad del stream y no todos los reproductores lo toleran. Probado con h264/AAC.
+- Con vídeo copiado, el salto de `-ss` cae en el keyframe anterior, así que al sintonizar a mitad de un item el stream puede empezar hasta un GOP antes de lo que dice la guía (unos segundos en la mayoría de ficheros). Con vídeo recodificado el salto es exacto. El desfase no se acumula: cada tramo siguiente se recalcula con el reloj.
+- Entre items hay un pequeño hueco (la puesta en marcha de ffmpeg y un margen de 0,2 s para que el DTS no retroceda).
+- Recodificar usa CPU (solo mientras se emite un fichero que lo necesite, y es CPU, no aceleración por hardware). `veryfast` aguanta tiempo real con 1080p en una CPU moderna, pero no en un equipo muy justo; si va lento, el stream se entrecorta.
+- La resolución y la tasa de fotogramas no se unifican: si cambian entre items, el SPS cambia a mitad del stream y casi todos los reproductores lo toleran, pero no se garantiza.
 - Solo ficheros locales. Los items que no lo sean se saltan.
 - No añade marca de agua ni anuncios al vídeo (eso exigiría recodificar).
 
