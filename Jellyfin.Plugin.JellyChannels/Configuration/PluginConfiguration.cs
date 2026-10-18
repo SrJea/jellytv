@@ -31,6 +31,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public int MaxRemuxStreams { get; set; } = 2;
 
     /// <summary>
+    /// Gets or sets a value indicating whether el plugin registra solo su tuner M3U y su guía XMLTV en Live TV de
+    /// Jellyfin y los mantiene al día, en vez de tener que añadirlos a mano.
+    /// </summary>
+    public bool AutoRegisterLiveTv { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets a value indicating whether se admiten fuentes de YouTube (descarga bajo demanda con yt-dlp).
     /// Desactivado por defecto: descargar de YouTube puede incumplir sus condiciones de servicio.
     /// </summary>

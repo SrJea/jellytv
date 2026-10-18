@@ -5,3 +5,4 @@ obj/
 artifacts/
 *.zip
 TestResults/
+dist/

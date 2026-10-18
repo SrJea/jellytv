@@ -70,8 +70,8 @@ Plugin ligero para Jellyfin que crea canales de TV lineales (estilo Tunarr / Ers
 ### 4. Integración con Jellyfin
 
 **Vía A: Live TV nativo**
-- Exponer `channels.m3u` y `epg.xml` y añadirlos como tuner M3U y proveedor XMLTV en Jellyfin.
-- Más adelante, implementar `ITunerHost` e `IListingsProvider` dentro del plugin para que se instalen solos.
+- Exponer `channels.m3u` y `epg.xml` y registrarlos como tuner M3U y proveedor XMLTV en Jellyfin. El plugin lo hace solo (ver *Live TV automático* más abajo); también se puede hacer a mano.
+- Hecho de otra forma: en lugar de un `ITunerHost` propio, el plugin registra solo el tuner M3U y la guía XMLTV que ya trae Jellyfin (ver *Live TV automático*).
 - Limitación: al terminar cada item el reproductor puede cortar y hay que volver a sintonizar.
 
 **Vía B: ventana propia (recomendada)**
@@ -210,7 +210,9 @@ Jellyfin.Plugin.JellyChannels/
 │   ├── player.js
 │   └── player.css
 └── Jellyfin.Plugin.JellyChannels.csproj
-Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén)
+Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén, remux, YouTube)
+scripts/build-release.sh              # Construye con jprm el ZIP y el manifest.json de un release (en dist/)
+.github/workflows/release.yaml        # Al subir una etiqueta v<versión>: tests, build y release de GitHub
 ```
 
 ## API
@@ -261,7 +263,7 @@ Si `id` de un canal no se indica al crearlo, se genera a partir del nombre (`Can
 9. **Configuración**: página de ajustes para crear y editar canales, elegir fuentes, logo, marca de agua y carpeta de anuncios.
 10. **Opcional**: remux `-c copy` para Live TV continuo, con interruptor en ajustes.
 11. **YouTube**: `YoutubeCache` con lectura de metadatos, tarea de prefetch, descarga con `yt-dlp`, política de retención y límite de disco. Endpoint de caché con soporte `Range`.
-12. **Empaquetado**: generar el ZIP del plugin con su `meta.json` y publicar un manifiesto de repositorio para instalarlo desde Jellyfin.
+12. **Empaquetado**: generar el ZIP del plugin con su `meta.json` y publicar un manifiesto de repositorio para instalarlo desde Jellyfin. Hecho: `scripts/build-release.sh` y el workflow de release.
 
 ## Compilar y probar
 
@@ -274,12 +276,66 @@ La DLL queda en `Jellyfin.Plugin.JellyChannels/bin/Release/net10.0/Jellyfin.Plug
 
 Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así que no necesitan ffmpeg instalado.
 
-## Instalación (una vez compilado)
+## Live TV automático
+
+Al instalar el plugin no hay que configurar nada en Live TV. Unos 20 segundos después de arrancar Jellyfin (y siempre que cambies los ajustes) el plugin deja registrados:
+
+- un **tuner M3U** llamado «JellyChannels» que apunta a `channels.m3u`,
+- un **proveedor de guía XMLTV** que apunta a `epg.xml`,
+- y una **clave de API** llamada «JellyChannels (Live TV)» (Panel > Claves de API) que usan esas dos entradas. Las URLs son locales (`127.0.0.1`), así que no dependen de tu dominio ni del puerto que uses por fuera.
+
+Cuando creas, editas o borras un canal, el plugin refresca la guía de Live TV a los pocos segundos y el canal aparece (o desaparece) en las listas de Live TV.
+
+- Si ya habías añadido a mano el tuner y la guía, los **adopta**: actualiza sus URLs y no los duplica. Si hay más de uno de cada, deja uno.
+- No toca ningún otro tuner ni guía.
+- Se desactiva en Ajustes > General (*Registrar JellyChannels en Live TV automáticamente*). Al desactivarlo quita el tuner, la guía y la clave que creó.
+- En la sección *Live TV* de la página del plugin se ve si está registrado y hay un botón para sincronizar al momento.
+- Un tuner M3U de Jellyfin necesita que la clave de API sea válida: no la borres desde Panel > Claves de API (el plugin la recrea en el siguiente repaso, pero entre medias Live TV no podrá leer los canales).
+
+## Crear canales: el editor visual
+
+En el menú lateral, *Complementos* > *JellyChannels*. Pensado para usarse también desde el móvil.
+
+1. **Nuevo canal**: nombre, número (0 usa el siguiente libre), días de guía, orden (en orden, aleatorio distinto en cada vuelta o aleatorio fijo) y un logo opcional (URL o fichero de la carpeta `assets` del plugin).
+2. **Fuentes**, en el orden en que se emiten. Cada botón abre un selector:
+   - *Serie*, *Película*, *Colección*: buscador sobre tu biblioteca, con póster. Se pueden añadir varias sin cerrarlo.
+   - *Tag*: los tags de tu biblioteca como botones, o uno escrito a mano.
+   - *YouTube*: URL o id de un vídeo y qué hacer con el fichero descargado (borrarlo al emitirse, conservarlo unos días o siempre). Avisa si la URL no es de un vídeo (por ejemplo una lista de reproducción) y si YouTube está desactivado en los ajustes.
+   - Cada fuente se puede subir, bajar o quitar. Si una fuente apunta a algo que ya no existe en la biblioteca, se marca en ámbar.
+3. **Guardar**. La lista de canales muestra cuántos items resuelven las fuentes, lo que dura una vuelta de la parrilla y lo que se está emitiendo ahora; si ahí pone «sin items», las fuentes no han dado contenido.
+4. *Avanzado: JSON del canal* enseña el canal entero, con los campos que el editor no toca (`seed`, `startDate`, `watermark`, `ads`), y permite editarlo a mano.
+
+Los ajustes del plugin (general, remux, YouTube) están más abajo en la misma página, plegados por secciones.
+
+## Instalación desde el repositorio de Jellyfin
+
+Cada versión se publica como un release de GitHub con dos assets: el ZIP del plugin y un `manifest.json` de repositorio de Jellyfin. Esa URL siempre apunta al manifiesto del último release:
+
+1. En Jellyfin: Panel > Plugins > Repositorios > `+`.
+   - Nombre: `JellyChannels`.
+   - URL: `https://github.com/SrJea/jellytv/releases/latest/download/manifest.json`.
+2. Panel > Plugins > Catálogo > JellyChannels (categoría *Live TV*) > Instalar y reiniciar Jellyfin.
+3. Configúralo desde la entrada *JellyChannels* del menú lateral, en *Complementos* (o desde Complementos > JellyChannels > Ajustes). Cuando salga una versión nueva, Jellyfin la ofrecerá como cualquier otra actualización.
+
+Si prefieres instalarlo a mano, descarga el ZIP del release y descomprímelo en `<datos de Jellyfin>/plugins/JellyChannels_<versión>/`.
+
+**Requisito: el repositorio de GitHub tiene que ser público.** Jellyfin descarga el manifiesto y el ZIP sin credenciales, y las descargas de un release de un repo privado devuelven 404 sin ellas.
+
+**Publicar una versión nueva**
+
+1. Sube `version` en `build.yaml` y en `Directory.Build.props` (deben coincidir) y añade la línea al `changelog` de `build.yaml`.
+2. Haz commit en `main` y lanza el workflow de una de estas dos formas: subiendo una etiqueta con esa versión (`git tag v0.7.0.0 && git push origin v0.7.0.0`) o desde GitHub, Actions > *Publicar release* > *Run workflow* (crea él la etiqueta).
+3. El workflow `.github/workflows/release.yaml` comprueba que la etiqueta coincide con la versión, pasa los tests, construye el ZIP con [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager), añade la versión al manifiesto del release anterior (para que el catálogo conserve las versiones viejas) y crea el release con `dist/*.zip` y `manifest.json`.
+4. Sin Actions: `pip install jprm && scripts/build-release.sh` deja el ZIP, el manifiesto y las notas en `dist/`. Se suben a mano a un release (`gh release create v0.7.0.0 dist/*.zip dist/manifest.json --notes-file dist/RELEASE_NOTES.md`).
+
+El ZIP y el manifiesto salen de la misma ejecución, así que el checksum del manifiesto siempre es el del ZIP del release. Una versión publicada no se vuelve a subir: cambiaría el ZIP y su checksum bajo quien ya la tenga instalada; si hay que corregir algo, publica una versión nueva.
+
+## Instalación manual (una vez compilado)
 
 1. Copiar `Jellyfin.Plugin.JellyChannels.dll` a `<datos de Jellyfin>/plugins/JellyChannels_0.6.0.0/`.
 2. Reiniciar Jellyfin.
 3. Abrir Panel > Plugins > JellyChannels y configurar los canales.
-4. Para Live TV: Panel > Live TV > añadir tuner M3U con `http://<servidor>/JellyChannels/channels.m3u?ApiKey=<clave>` y proveedor XMLTV con `http://<servidor>/JellyChannels/epg.xml?ApiKey=<clave>` (sin `?ApiKey` si se activa el acceso anónimo).
+4. Para Live TV no hace falta hacer nada: el plugin añade solo el tuner y la guía (ver *Live TV automático*). Si desactivas el registro automático, añade a mano en Panel > Live TV un tuner M3U con `http://<servidor>/JellyChannels/channels.m3u?ApiKey=<clave>` y un proveedor XMLTV con `http://<servidor>/JellyChannels/epg.xml?ApiKey=<clave>` (sin `?ApiKey` si se activa el acceso anónimo).
 5. Para la ventana propia: abrir `/JellyChannels/Web`.
 
 ## Riesgos y decisiones abiertas
@@ -298,9 +354,9 @@ Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así
 
 ## Hoja de ruta
 
-- [x] v0.1: canales, parrilla, M3U y XMLTV (incluye resolución por serie, película, colección y tag, y un editor JSON básico en la página de ajustes)
+- [x] v0.1: canales, parrilla, M3U y XMLTV (incluye resolución por serie, película, colección y tag, y un editor visual de canales en la página de ajustes)
 - [ ] v0.2: ventana propia con marca de agua
 - [ ] v0.3: anuncios
-- [ ] v0.4: página de configuración completa
+- [ ] v0.4: página de configuración completa (hecho: editor visual de canales y ajustes; falta la marca de agua y los anuncios, que llegan con la v0.2 y la v0.3)
 - [x] v0.5: remux `-c copy` opcional
 - [x] v0.6: fuentes de YouTube con descarga y borrado a demanda (vídeos sueltos)

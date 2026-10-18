@@ -75,7 +75,9 @@ public class NowPlayingController : ControllerBase
                 now,
                 Describe(scheduled, urls),
                 scheduled.OffsetTicksAt(now),
-                Describe(schedule.GetNext(scheduled), urls)));
+                Describe(schedule.GetNext(scheduled), urls),
+                schedule.ItemCount,
+                schedule.CycleTicks));
         }
 
         return RequestExtensions.PluginJson(new NowPlayingDto(
@@ -84,6 +86,8 @@ public class NowPlayingController : ControllerBase
             Describe(current, urls),
             skipped ? 0 : current.OffsetTicksAt(now),
             Describe(schedule.GetNext(current), urls),
+            schedule.ItemCount,
+            schedule.CycleTicks,
             skipped));
     }
 

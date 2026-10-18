@@ -6,12 +6,16 @@ targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Canales de TV lineales a partir de la biblioteca"
 description: >
-  Crea canales de TV lineales (estilo Tunarr / ErsatzTV) a partir de la
-  propia biblioteca de Jellyfin, con parrilla determinista, EPG XMLTV y
-  lista M3U. Sin ffmpeg ni procesos por canal.
+  Crea canales de TV lineales (estilo Tunarr / ErsatzTV) a partir de la propia
+  biblioteca de Jellyfin: parrilla determinista, EPG XMLTV y lista M3U para
+  Live TV. Opcionales y desactivados por defecto: un stream continuo remuxado
+  con el ffmpeg de Jellyfin (copia lo compatible y recodifica el resto a
+  H.264/AAC) y vídeos de YouTube con descarga bajo demanda (requiere yt-dlp).
 category: "LiveTV"
 owner: "srjea"
 artifacts:
 - "Jellyfin.Plugin.JellyChannels.dll"
-changelog: >
-  v0.6: fuentes de YouTube con descarga bajo demanda (yt-dlp). v0.5: remux opcional con ffmpeg. v0.1: canales, parrilla, M3U y XMLTV.
+changelog: |
+  v0.6: fuentes de YouTube con descarga bajo demanda (yt-dlp).
+  v0.5: stream continuo opcional (remux con ffmpeg) sin exigir códecs iguales.
+  v0.1: canales, parrilla, M3U y XMLTV.
