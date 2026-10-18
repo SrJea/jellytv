@@ -66,7 +66,7 @@ public sealed class ScheduleEngine
         ArgumentNullException.ThrowIfNull(channel);
         return new ScheduleEngine(
             channel.Mode,
-            channel.Seed ?? StableRandom.Hash(channel.Id),
+            channel.Seed ?? StableRandom.DefaultSeed(channel.Id),
             channel.StartDate ?? DateTimeOffset.UnixEpoch,
             items);
     }

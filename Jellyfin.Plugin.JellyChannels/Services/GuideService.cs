@@ -9,6 +9,8 @@ namespace Jellyfin.Plugin.JellyChannels.Services;
 /// </summary>
 public class GuideService
 {
+    private const int MaxCachedVariants = 16;
+
     private readonly ChannelStore _store;
     private readonly ScheduleService _scheduleService;
     private readonly ConcurrentDictionary<GuideUrls, (string Xml, DateTimeOffset BuiltAt)> _epgCache = new();
@@ -24,7 +26,10 @@ public class GuideService
         _store = store;
         _scheduleService = scheduleService;
         _store.Changed += (_, _) => _epgCache.Clear();
+        _scheduleService.Invalidated += (_, _) => _epgCache.Clear();
     }
+
+    internal int CacheCount => _epgCache.Count;
 
     /// <summary>
     /// Devuelve el XMLTV de todos los canales.
@@ -42,6 +47,14 @@ public class GuideService
 
         var channels = _store.GetAll().Select(c => (c, _scheduleService.GetSchedule(c))).ToList();
         var xml = EpgGenerator.Generate(channels, urls, now);
+
+        // La clave incluye el host y la clave de API de la petición; sin tope, un cliente anónimo
+        // podría llenar la memoria variando la cabecera Host.
+        if (_epgCache.Count >= MaxCachedVariants)
+        {
+            _epgCache.Clear();
+        }
+
         _epgCache[urls] = (xml, now);
         return xml;
     }

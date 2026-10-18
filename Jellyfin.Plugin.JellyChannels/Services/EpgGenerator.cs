@@ -70,11 +70,46 @@ public static class EpgGenerator
     internal static string FormatTime(DateTimeOffset time)
         => time.UtcDateTime.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) + " +0000";
 
+    /// <summary>
+    /// Quita los caracteres que XML 1.0 no admite. Un solo título o sinopsis con un carácter de
+    /// control haría fallar el documento entero.
+    /// </summary>
+    /// <param name="text">Texto.</param>
+    /// <returns>Texto válido en XML.</returns>
+    internal static string Clean(string text)
+    {
+        StringBuilder? builder = null;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            bool valid = XmlConvert.IsXmlChar(c);
+            int length = 1;
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && XmlConvert.IsXmlSurrogatePair(text[i + 1], c))
+            {
+                valid = true;
+                length = 2;
+            }
+
+            if (valid)
+            {
+                builder?.Append(text, i, length);
+            }
+            else
+            {
+                builder ??= new StringBuilder(text.Length).Append(text, 0, i);
+            }
+
+            i += length - 1;
+        }
+
+        return builder?.ToString() ?? text;
+    }
+
     private static void WriteChannel(XmlWriter writer, Channel channel, GuideUrls urls)
     {
         writer.WriteStartElement("channel");
         writer.WriteAttributeString("id", GuideUrls.XmltvId(channel));
-        writer.WriteElementString("display-name", channel.Name);
+        writer.WriteElementString("display-name", Clean(channel.Name));
         writer.WriteElementString("display-name", channel.Number.ToString(CultureInfo.InvariantCulture));
         var logo = urls.Asset(channel.Logo);
         if (logo is not null)
@@ -95,15 +130,15 @@ public static class EpgGenerator
         writer.WriteAttributeString("stop", FormatTime(entry.End));
         writer.WriteAttributeString("channel", GuideUrls.XmltvId(channel));
 
-        writer.WriteElementString("title", item.Title);
+        writer.WriteElementString("title", Clean(item.Title));
         if (!string.IsNullOrEmpty(item.EpisodeTitle))
         {
-            writer.WriteElementString("sub-title", item.EpisodeTitle);
+            writer.WriteElementString("sub-title", Clean(item.EpisodeTitle));
         }
 
         if (!string.IsNullOrEmpty(item.Overview))
         {
-            writer.WriteElementString("desc", item.Overview);
+            writer.WriteElementString("desc", Clean(item.Overview));
         }
 
         if (item.Year is int year)
@@ -113,12 +148,12 @@ public static class EpgGenerator
 
         foreach (var genre in item.Genres)
         {
-            writer.WriteElementString("category", genre);
+            writer.WriteElementString("category", Clean(genre));
         }
 
         writer.WriteStartElement("length");
         writer.WriteAttributeString("units", "minutes");
-        writer.WriteString(((long)Math.Round(TimeSpan.FromTicks(item.DurationTicks).TotalMinutes)).ToString(CultureInfo.InvariantCulture));
+        writer.WriteString(Math.Max(1, (long)Math.Round(TimeSpan.FromTicks(item.DurationTicks).TotalMinutes, MidpointRounding.AwayFromZero)).ToString(CultureInfo.InvariantCulture));
         writer.WriteEndElement();
 
         if (item.ImageItemId is Guid imageId)
@@ -130,12 +165,16 @@ public static class EpgGenerator
 
         if (item.Episode is int episode)
         {
-            // xmltv_ns empieza en 0: "temporada.episodio.parte".
-            var season = item.Season is int s ? (s - 1).ToString(CultureInfo.InvariantCulture) : string.Empty;
-            writer.WriteStartElement("episode-num");
-            writer.WriteAttributeString("system", "xmltv_ns");
-            writer.WriteString(string.Create(CultureInfo.InvariantCulture, $"{season}.{episode - 1}."));
-            writer.WriteEndElement();
+            // xmltv_ns empieza en 0: "temporada.episodio.parte". Los especiales (temporada 0) y el
+            // episodio 0 no tienen posición válida, así que ese campo se deja vacío.
+            if (episode >= 1)
+            {
+                var season = item.Season is >= 1 ? (item.Season.Value - 1).ToString(CultureInfo.InvariantCulture) : string.Empty;
+                writer.WriteStartElement("episode-num");
+                writer.WriteAttributeString("system", "xmltv_ns");
+                writer.WriteString(string.Create(CultureInfo.InvariantCulture, $"{season}.{episode - 1}."));
+                writer.WriteEndElement();
+            }
 
             writer.WriteStartElement("episode-num");
             writer.WriteAttributeString("system", "onscreen");

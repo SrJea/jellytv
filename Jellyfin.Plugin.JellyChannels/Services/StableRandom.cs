@@ -13,6 +13,28 @@ internal static class StableRandom
     private const ulong Golden = 0x9E3779B97F4A7C15;
 
     /// <summary>
+    /// Mayor semilla que sobrevive a un viaje por JSON en JavaScript (2^53 - 1). El editor de la
+    /// página de ajustes reescribe los números como <c>double</c>, y una semilla mayor se redondearía
+    /// y cambiaría el orden de la parrilla.
+    /// </summary>
+    public const long MaxSafeSeed = (1L << 53) - 1;
+
+    /// <summary>
+    /// Semilla por defecto de un canal, derivada de su id.
+    /// </summary>
+    /// <param name="id">Id del canal.</param>
+    /// <returns>Semilla entre 0 y <see cref="MaxSafeSeed"/>.</returns>
+    public static long DefaultSeed(string id) => Hash(id) & MaxSafeSeed;
+
+    /// <summary>
+    /// Lleva una semilla cualquiera al rango seguro. Las que ya están dentro no cambian.
+    /// </summary>
+    /// <param name="seed">Semilla.</param>
+    /// <returns>Semilla entre -<see cref="MaxSafeSeed"/> y <see cref="MaxSafeSeed"/>.</returns>
+    public static long ClampSeed(long seed)
+        => seed is >= -MaxSafeSeed and <= MaxSafeSeed ? seed : (seed % (MaxSafeSeed + 1));
+
+    /// <summary>
     /// Hash FNV-1a de 64 bits de una cadena.
     /// </summary>
     /// <param name="value">Cadena.</param>

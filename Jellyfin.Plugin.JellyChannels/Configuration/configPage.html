@@ -69,13 +69,15 @@
                     epgDays: 3
                 };
 
-                function api(type, path, body) {
+                // Solo se pide JSON cuando la respuesta trae cuerpo; refresh y DELETE devuelven 204
+                // y el intento de parsearlo hacía fallar la promesa.
+                function api(type, path, body, expectJson) {
                     var options = { type: type, url: ApiClient.getUrl(path) };
                     if (body !== undefined) {
                         options.data = JSON.stringify(body);
                         options.contentType = 'application/json';
                     }
-                    if (type === 'GET' || type === 'POST' || type === 'PUT') {
+                    if (expectJson !== false && (type === 'GET' || body !== undefined)) {
                         options.dataType = 'json';
                     }
                     return ApiClient.ajax(options);
@@ -171,7 +173,7 @@
                 page.querySelector('#jcCancel').addEventListener('click', hideEditor);
 
                 page.querySelector('#jcRefresh').addEventListener('click', function () {
-                    api('POST', 'JellyChannels/channels/refresh').then(function () {
+                    api('POST', 'JellyChannels/channels/refresh', undefined, false).then(function () {
                         Dashboard.alert('Parrillas recalculadas.');
                         loadChannels();
                     });
@@ -202,7 +204,7 @@
                         return;
                     }
 
-                    api('DELETE', 'JellyChannels/channels/' + encodeURIComponent(editingId)).then(function () {
+                    api('DELETE', 'JellyChannels/channels/' + encodeURIComponent(editingId), undefined, false).then(function () {
                         hideEditor();
                         loadChannels();
                     });

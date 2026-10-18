@@ -96,7 +96,7 @@ public class ChannelStore
         Channel saved;
         lock (_lock)
         {
-            var channels = Load();
+            var channels = Load().ToList();
             saved = Clone(channel);
             saved.Id = UniqueId(channels, string.IsNullOrWhiteSpace(saved.Id) ? Slugify(saved.Name) : Slugify(saved.Id));
             Normalize(saved, channels);
@@ -120,7 +120,7 @@ public class ChannelStore
         Channel saved;
         lock (_lock)
         {
-            var channels = Load();
+            var channels = Load().ToList();
             int index = channels.FindIndex(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
             {
@@ -151,7 +151,7 @@ public class ChannelStore
     {
         lock (_lock)
         {
-            var channels = Load();
+            var channels = Load().ToList();
             if (channels.RemoveAll(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase)) == 0)
             {
                 return false;
@@ -213,7 +213,7 @@ public class ChannelStore
         }
 
         channel.EpgDays = Math.Clamp(channel.EpgDays, 1, 14);
-        channel.Seed ??= StableRandom.Hash(channel.Id);
+        channel.Seed = channel.Seed is long seed ? StableRandom.ClampSeed(seed) : StableRandom.DefaultSeed(channel.Id);
         if (channel.StartDate is null)
         {
             var now = DateTimeOffset.UtcNow;

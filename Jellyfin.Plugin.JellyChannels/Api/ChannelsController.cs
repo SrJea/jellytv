@@ -71,6 +71,12 @@ public class ChannelsController : ControllerBase
             return BadRequest("Cuerpo JSON de canal no válido.");
         }
 
+        var errors = ChannelValidator.Validate(channel);
+        if (errors.Count > 0)
+        {
+            return BadRequest(string.Join(' ', errors));
+        }
+
         var created = _store.Create(channel);
         return RequestExtensions.PluginJson(created, StatusCodes.Status201Created);
     }
@@ -89,6 +95,12 @@ public class ChannelsController : ControllerBase
         if (channel is null)
         {
             return BadRequest("Cuerpo JSON de canal no válido.");
+        }
+
+        var errors = ChannelValidator.Validate(channel);
+        if (errors.Count > 0)
+        {
+            return BadRequest(string.Join(' ', errors));
         }
 
         var updated = _store.Update(id, channel);

@@ -41,6 +41,11 @@ public class ScheduleService
     }
 
     /// <summary>
+    /// Se lanza al vaciar toda la caché con <see cref="Invalidate"/>.
+    /// </summary>
+    public event EventHandler? Invalidated;
+
+    /// <summary>
     /// Gets la hora actual según el reloj del servicio.
     /// </summary>
     public DateTimeOffset Now => _timeProvider.GetUtcNow();
@@ -69,7 +74,11 @@ public class ScheduleService
     /// <summary>
     /// Vacía la caché de todos los canales.
     /// </summary>
-    public void Invalidate() => _cache.Clear();
+    public void Invalidate()
+    {
+        _cache.Clear();
+        Invalidated?.Invoke(this, EventArgs.Empty);
+    }
 
     private sealed record CachedSchedule(ScheduleEngine Engine, DateTimeOffset BuiltAt);
 }
