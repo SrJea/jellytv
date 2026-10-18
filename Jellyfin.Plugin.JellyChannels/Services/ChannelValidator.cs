@@ -29,9 +29,15 @@ internal static class ChannelValidator
                 SourceType.Series or SourceType.Movie or SourceType.Collection
                     when !Guid.TryParse(source.Id, out _) => "necesita un 'id' de item de Jellyfin válido",
                 SourceType.Tag when string.IsNullOrWhiteSpace(source.Value) => "necesita un 'value' con el tag",
-                SourceType.Youtube when string.IsNullOrWhiteSpace(source.Url) => "necesita una 'url'",
+                SourceType.Youtube when !YoutubeId.TryParse(source.Url, out _)
+                    => "necesita la 'url' de un vídeo de YouTube (watch?v=, youtu.be, shorts); las listas de reproducción aún no están soportadas",
                 _ => null
             };
+
+            if (problem is null && source.Type == SourceType.Youtube && !YoutubeRetention.TryParse(source.Retention, out _))
+            {
+                problem = "'retention' debe ser delete-after-airing, keep o keep-days:N (N entre 1 y 3650)";
+            }
 
             if (problem is not null)
             {

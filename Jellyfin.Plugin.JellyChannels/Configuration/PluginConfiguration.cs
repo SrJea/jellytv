@@ -31,6 +31,32 @@ public class PluginConfiguration : BasePluginConfiguration
     public int MaxRemuxStreams { get; set; } = 2;
 
     /// <summary>
+    /// Gets or sets a value indicating whether se admiten fuentes de YouTube (descarga bajo demanda con yt-dlp).
+    /// Desactivado por defecto: descargar de YouTube puede incumplir sus condiciones de servicio.
+    /// </summary>
+    public bool EnableYoutube { get; set; }
+
+    /// <summary>
+    /// Gets or sets la ruta del binario de yt-dlp, o su nombre si está en el PATH.
+    /// </summary>
+    public string YtDlpPath { get; set; } = "yt-dlp";
+
+    /// <summary>
+    /// Gets or sets cuántos minutos antes de su emisión se descarga cada vídeo.
+    /// </summary>
+    public int YoutubePrefetchMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// Gets or sets el tamaño máximo de la caché de YouTube en MB; 0 no pone límite.
+    /// </summary>
+    public int YoutubeMaxCacheMb { get; set; } = 5120;
+
+    /// <summary>
+    /// Gets or sets el selector de formato de yt-dlp. El de por defecto pide un solo archivo MP4, que no necesita ffmpeg para unir pistas.
+    /// </summary>
+    public string YoutubeFormat { get; set; } = "b[ext=mp4]/b";
+
+    /// <summary>
     /// Gets or sets los minutos que se cachea la lista de items resuelta de cada canal.
     /// </summary>
     public int LibraryCacheMinutes { get; set; } = 10;

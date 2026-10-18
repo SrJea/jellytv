@@ -37,6 +37,34 @@
                         <label class="inputLabel inputLabelUnfocused" for="MaxRemuxStreams">Máximo de streams remuxados a la vez</label>
                         <input id="MaxRemuxStreams" type="number" is="emby-input" min="1" />
                     </div>
+                    <h3>YouTube</h3>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableYoutube" type="checkbox" is="emby-checkbox" />
+                            <span>Permitir fuentes de YouTube</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Los vídeos no se descargan al añadirlos: solo se leen sus metadatos (título y duración), con los que ya entran en la parrilla y la guía. El fichero se baja poco antes de que toque emitirlo y se borra según la retención de la fuente. Necesita <code>yt-dlp</code> instalado en el servidor. Descargar vídeos puede incumplir las condiciones de servicio de YouTube y los derechos de autor del contenido: úsalo solo para uso personal con contenido que tengas derecho a guardar.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YtDlpPath">Ruta de yt-dlp</label>
+                        <input id="YtDlpPath" type="text" is="emby-input" />
+                        <div class="fieldDescription">Ruta del binario, o <code>yt-dlp</code> si está en el PATH. YouTube cambia a menudo: si las descargas empiezan a fallar, actualiza yt-dlp.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YoutubePrefetchMinutes">Descargar con antelación (minutos)</label>
+                        <input id="YoutubePrefetchMinutes" type="number" is="emby-input" min="1" />
+                        <div class="fieldDescription">Si un vídeo no está listo cuando le toca, el canal salta al siguiente item y lo reintenta después.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YoutubeMaxCacheMb">Límite de la caché (MB, 0 sin límite)</label>
+                        <input id="YoutubeMaxCacheMb" type="number" is="emby-input" min="0" />
+                        <div class="fieldDescription">Al superarlo se borran primero los ya emitidos, los más antiguos primero. Los de retención <code>keep</code> no se borran.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YoutubeFormat">Formato de yt-dlp</label>
+                        <input id="YoutubeFormat" type="text" is="emby-input" />
+                        <div class="fieldDescription">Por defecto <code>b[ext=mp4]/b</code>: un solo archivo, sin ffmpeg para unir pistas. La calidad máxima de esos formatos es limitada.</div>
+                    </div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="LibraryCacheMinutes">Caché de la biblioteca (minutos)</label>
                         <input id="LibraryCacheMinutes" type="number" is="emby-input" min="0" />
@@ -54,6 +82,9 @@
                 <h3>URLs para Live TV</h3>
                 <div class="fieldDescription">Tuner M3U: <code id="jcM3uUrl"></code></div>
                 <div class="fieldDescription">Proveedor XMLTV: <code id="jcEpgUrl"></code></div>
+
+                <h3>Vídeos de YouTube</h3>
+                <div id="jcYoutubeList"></div>
 
                 <h3>Canales</h3>
                 <div id="jcChannelList"></div>
@@ -105,6 +136,45 @@
                     var div = document.createElement('div');
                     div.textContent = value == null ? '' : String(value);
                     return div.innerHTML;
+                }
+
+                var stateLabels = { cached: 'Descargado', ready: 'Pendiente de descarga', pending: 'Leyendo metadatos', error: 'Error' };
+
+                function formatSize(bytes) {
+                    return bytes ? (bytes / 1048576).toFixed(1) + ' MB' : '';
+                }
+
+                function loadYoutube() {
+                    return api('GET', 'JellyChannels/youtube').then(function (videos) {
+                        var list = page.querySelector('#jcYoutubeList');
+                        if (!videos.length) {
+                            list.innerHTML = '<p>No hay vídeos de YouTube. Añade una fuente <code>{"type": "youtube", "url": "https://www.youtube.com/watch?v=...", "retention": "delete-after-airing"}</code> a un canal.</p>';
+                            return;
+                        }
+
+                        list.innerHTML = videos.map(function (v) {
+                            var detail = [stateLabels[v.state] || v.state, formatSize(v.sizeBytes), v.retention].filter(Boolean).join(' · ');
+                            var error = v.lastError ? '<div class="listItemBodyText secondary">' + escapeHtml(v.lastError) + '</div>' : '';
+                            var buttons = (v.state === 'cached' ? '<button is="emby-button" type="button" class="raised emby-button jcYtDelete" data-id="' + escapeHtml(v.id) + '"><span>Borrar copia</span></button>' : '')
+                                + (v.state === 'error' ? '<button is="emby-button" type="button" class="raised emby-button jcYtRetry" data-id="' + escapeHtml(v.id) + '"><span>Reintentar</span></button>' : '');
+                            return '<div class="listItem"><div class="listItemBody">'
+                                + '<h3 class="listItemBodyText">' + escapeHtml(v.title || v.id) + '</h3>'
+                                + '<div class="listItemBodyText secondary">' + escapeHtml(v.id) + ' · ' + escapeHtml(detail) + '</div>' + error
+                                + '</div>' + buttons + '</div>';
+                        }).join('');
+
+                        list.querySelectorAll('.jcYtDelete').forEach(function (button) {
+                            button.addEventListener('click', function () {
+                                api('DELETE', 'JellyChannels/youtube/' + encodeURIComponent(button.getAttribute('data-id')) + '/cache', undefined, false).then(loadYoutube);
+                            });
+                        });
+
+                        list.querySelectorAll('.jcYtRetry').forEach(function (button) {
+                            button.addEventListener('click', function () {
+                                api('POST', 'JellyChannels/youtube/' + encodeURIComponent(button.getAttribute('data-id')) + '/retry', undefined, false).then(loadYoutube);
+                            });
+                        });
+                    });
                 }
 
                 function showEditor(channel) {
@@ -167,7 +237,12 @@
                         page.querySelector('#MaxRemuxStreams').value = config.MaxRemuxStreams;
                         page.querySelector('#LibraryCacheMinutes').value = config.LibraryCacheMinutes;
                         page.querySelector('#EpgCacheMinutes').value = config.EpgCacheMinutes;
-                        return loadChannels();
+                        page.querySelector('#EnableYoutube').checked = config.EnableYoutube;
+                        page.querySelector('#YtDlpPath').value = config.YtDlpPath;
+                        page.querySelector('#YoutubePrefetchMinutes').value = config.YoutubePrefetchMinutes;
+                        page.querySelector('#YoutubeMaxCacheMb').value = config.YoutubeMaxCacheMb;
+                        page.querySelector('#YoutubeFormat').value = config.YoutubeFormat;
+                        return Promise.all([loadChannels(), loadYoutube()]);
                     }).finally(function () {
                         Dashboard.hideLoadingMsg();
                     });
@@ -178,6 +253,11 @@
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         config.AllowAnonymousGuide = page.querySelector('#AllowAnonymousGuide').checked;
+                        config.EnableYoutube = page.querySelector('#EnableYoutube').checked;
+                        config.YtDlpPath = page.querySelector('#YtDlpPath').value.trim() || 'yt-dlp';
+                        config.YoutubePrefetchMinutes = Math.max(1, parseInt(page.querySelector('#YoutubePrefetchMinutes').value, 10) || 30);
+                        config.YoutubeMaxCacheMb = Math.max(0, parseInt(page.querySelector('#YoutubeMaxCacheMb').value, 10) || 0);
+                        config.YoutubeFormat = page.querySelector('#YoutubeFormat').value.trim() || 'b[ext=mp4]/b';
                         config.EnableRemux = page.querySelector('#EnableRemux').checked;
                         config.RemuxAllowTranscode = page.querySelector('#RemuxAllowTranscode').checked;
                         config.MaxRemuxStreams = Math.max(1, parseInt(page.querySelector('#MaxRemuxStreams').value, 10) || 1);
@@ -186,6 +266,8 @@
                         return ApiClient.updatePluginConfiguration(pluginId, config);
                     }).then(function (result) {
                         Dashboard.processPluginConfigurationUpdateResult(result);
+                        loadChannels();
+                        loadYoutube();
                     });
                     return false;
                 });

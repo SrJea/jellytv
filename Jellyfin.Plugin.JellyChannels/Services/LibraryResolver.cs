@@ -26,16 +26,19 @@ public class LibraryResolver : ILibraryResolver
     ];
 
     private readonly ILibraryManager _libraryManager;
+    private readonly IYoutubeCatalog _youtube;
     private readonly ILogger<LibraryResolver> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LibraryResolver"/> class.
     /// </summary>
     /// <param name="libraryManager">Gestor de biblioteca.</param>
+    /// <param name="youtube">Vídeos de YouTube con metadatos.</param>
     /// <param name="logger">Logger.</param>
-    public LibraryResolver(ILibraryManager libraryManager, ILogger<LibraryResolver> logger)
+    public LibraryResolver(ILibraryManager libraryManager, IYoutubeCatalog youtube, ILogger<LibraryResolver> logger)
     {
         _libraryManager = libraryManager;
+        _youtube = youtube;
         _logger = logger;
     }
 
@@ -48,6 +51,17 @@ public class LibraryResolver : ILibraryResolver
         var result = new List<ScheduleItem>();
         foreach (var source in channel.Sources)
         {
+            if (source.Type == SourceType.Youtube)
+            {
+                // Sin metadatos (aún no leídos o YouTube desactivado) el vídeo no está en la parrilla.
+                if (YoutubeId.TryParse(source.Url, out var videoId) && _youtube.GetScheduleItem(videoId) is { } youtubeItem && seen.Add(youtubeItem.ItemId))
+                {
+                    result.Add(youtubeItem);
+                }
+
+                continue;
+            }
+
             foreach (var item in ResolveSource(channel, source))
             {
                 if (item.RunTimeTicks is > 0 && seen.Add(item.Id))
@@ -133,10 +147,6 @@ public class LibraryResolver : ILibraryResolver
                 return tagged
                     .OrderBy(i => i.SortName, StringComparer.OrdinalIgnoreCase)
                     .SelectMany(i => Expand(i, 0));
-
-            case SourceType.Youtube:
-                _logger.LogDebug("Canal {Channel}: las fuentes de YouTube aún no están implementadas (v0.6)", channel.Id);
-                return [];
 
             default:
                 return [];

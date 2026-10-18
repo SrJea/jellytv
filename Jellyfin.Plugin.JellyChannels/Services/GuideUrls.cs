@@ -51,6 +51,14 @@ public sealed record GuideUrls(string BaseUrl, string? ApiKey)
     }
 
     /// <summary>
+    /// URL del fichero descargado de un vídeo de YouTube, que se sirve con soporte de rangos.
+    /// </summary>
+    /// <param name="videoId">Id de YouTube.</param>
+    /// <returns>La URL.</returns>
+    public string YoutubeFile(string videoId)
+        => WithKey($"{BaseUrl}/JellyChannels/youtube/{Uri.EscapeDataString(videoId)}/file");
+
+    /// <summary>
     /// URL de un fichero de la carpeta assets, o la propia URL si ya es absoluta.
     /// </summary>
     /// <param name="file">Nombre de fichero o URL.</param>

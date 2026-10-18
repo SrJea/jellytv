@@ -69,6 +69,16 @@ public sealed record ScheduleItem
     public string? Path { get; init; }
 
     /// <summary>
+    /// Gets el id de YouTube si el item es un vídeo de YouTube; en ese caso <see cref="ItemId"/> es un Guid derivado del id.
+    /// </summary>
+    public string? YoutubeId { get; init; }
+
+    /// <summary>
+    /// Gets la URL absoluta de la imagen, para items que no están en la biblioteca (miniatura de YouTube).
+    /// </summary>
+    public string? ImageUrl { get; init; }
+
+    /// <summary>
     /// Gets el id del item cuya imagen Primary se usa como póster.
     /// </summary>
     public Guid? ImageItemId { get; init; }

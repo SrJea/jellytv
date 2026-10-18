@@ -114,6 +114,36 @@ Un canal puede incluir fuentes de tipo `youtube`: un vídeo suelto o, más adela
 
 **Nota legal**: descargar vídeos puede incumplir las condiciones de servicio de YouTube y los derechos de autor del contenido. Está pensado para uso personal con contenido que tengas derecho a guardar. La función va desactivada por defecto.
 
+**Cómo se usa (v0.6)**
+
+1. Instala `yt-dlp` en el servidor y, en los ajustes del plugin, activa *Permitir fuentes de YouTube* e indica su ruta (o déjalo como `yt-dlp` si está en el PATH).
+2. Añade una fuente a un canal:
+
+```json
+{ "type": "youtube", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "retention": "delete-after-airing" }
+```
+
+   Se aceptan URLs de `watch?v=`, `youtu.be/`, `shorts/`, `live/` y `embed/`, o el id suelto de 11 caracteres. `retention` es `delete-after-airing` (por defecto), `keep-days:N` o `keep`. Las listas de reproducción se rechazan con un 400 (de momento solo vídeos sueltos).
+3. Al guardar el canal, una tarea de fondo lee los metadatos con `yt-dlp --dump-single-json --skip-download` (no baja el vídeo). En cuanto los tiene, el vídeo entra en la parrilla y en el EPG con su título, duración, descripción y miniatura. Mientras no los tenga, no está en la parrilla.
+4. Cada minuto la tarea repasa la parrilla y descarga los vídeos cuyo hueco cae dentro de los próximos *N* minutos (30 por defecto) o está en emisión, de uno en uno y con prioridad baja. Si falla, reintenta con espera creciente (5 min, 10 min... hasta 6 h) y el error se ve en la página de ajustes.
+5. Al terminar el hueco se aplica la retención. Si un mismo vídeo está en varios canales, manda la política más conservadora. Con *Límite de la caché* superado se borran primero los ya emitidos, los más antiguos primero; los de `keep` y los que hacen falta pronto no se tocan.
+6. En la página de ajustes se ve cada vídeo (estado, tamaño, error) y se puede borrar su copia o reintentar.
+
+**Cuando un vídeo no está listo**
+
+- `GET /channels/{id}/now`: si el item que toca es un vídeo sin descargar, devuelve el siguiente item reproducible desde el principio y `skipped: true`. Cada item lleva `available` y, si es un vídeo de YouTube descargado, `streamUrl`.
+- Redirect de Live TV sin remux: igual, apunta al siguiente item reproducible.
+- `live.ts` (remux): no hay nada que emitir en ese hueco, así que el stream espera a que acabe. Si fallan tres huecos seguidos, se cierra. Subir el margen de descarga lo evita casi siempre.
+- En ningún caso se baja el vídeo en el momento de verlo: se salta y se reintenta para la próxima vez.
+
+**Detalles**
+
+- La URL que recibe `yt-dlp` siempre es `https://www.youtube.com/watch?v=<id>`, construida por el plugin tras validar el id, precedida de `--`. Nunca es el texto que escribió el usuario, así que una fuente no puede hacer que `yt-dlp` descargue de otro sitio ni colar opciones.
+- El formato por defecto (`b[ext=mp4]/b`) es un archivo progresivo único, que `yt-dlp` baja sin ffmpeg para unir pistas. Su calidad máxima es limitada (normalmente 360p o 720p). Se puede cambiar en los ajustes, pero los formatos que necesitan unir vídeo y audio requieren que `yt-dlp` encuentre ffmpeg y ffprobe, y eso no lo configura el plugin.
+- Los códecs que anuncia `yt-dlp` para el formato elegido se usan para decidir si el remux copia o recodifica el vídeo (un WebM VP9/Opus se recodifica, un MP4 H.264/AAC se copia).
+- Los ficheros se sirven con `GET /JellyChannels/youtube/{id}/file`, con soporte de `Range`.
+- El estado (metadatos, errores, política) se guarda en `<datos de Jellyfin>/JellyChannels/youtube.json` y los vídeos en `<datos de Jellyfin>/JellyChannels/cache/youtube/`.
+
 ## Remux (v0.5)
 
 Se activa en los ajustes del plugin (*Stream continuo*). Añade `GET /JellyChannels/channels/{id}/live.ts`, un MPEG-TS continuo que sigue la parrilla: empieza en el item y el punto que tocan ahora y, al acabar cada item, encadena el siguiente sin que el cliente tenga que volver a sintonizar. Con el remux activo, `/channels/{id}/stream` (la URL del M3U) redirige a `live.ts` en vez de al fichero suelto, así que el tuner de Live TV lo usa sin cambiar nada.
@@ -131,7 +161,7 @@ Se activa en los ajustes del plugin (*Stream continuo*). Añade `GET /JellyChann
 
 **Límites (importantes)**
 
-- Con vídeo copiado, el salto de `-ss` cae en el keyframe anterior, así que al sintonizar a mitad de un item el stream puede empezar hasta un GOP antes de lo que dice la guía (unos segundos en la mayoría de ficheros). Con vídeo recodificado el salto es exacto. El desfase no se acumula: cada tramo siguiente se recalcula con el reloj.
+- Con vídeo copiado no se puede empezar en un punto cualquiera, solo en un keyframe. Al sintonizar a mitad de un item, según el contenedor el stream empieza hasta un GOP antes de lo que dice la guía (unos segundos en la mayoría de ficheros) o el audio sale primero y el vídeo aparece en el siguiente keyframe. Con vídeo recodificado el salto es exacto. El desfase no se acumula: cada tramo siguiente se recalcula con el reloj.
 - Entre items hay un pequeño hueco (la puesta en marcha de ffmpeg y un margen de 0,2 s para que el DTS no retroceda).
 - Recodificar usa CPU (solo mientras se emite un fichero que lo necesite, y es CPU, no aceleración por hardware). `veryfast` aguanta tiempo real con 1080p en una CPU moderna, pero no en un equipo muy justo; si va lento, el stream se entrecorta.
 - La resolución y la tasa de fotogramas no se unifican: si cambian entre items, el SPS cambia a mitad del stream y casi todos los reproductores lo toleran, pero no se garantiza.
@@ -162,12 +192,18 @@ Jellyfin.Plugin.JellyChannels/
 │   ├── GuideService.cs            # Caché del EPG
 │   ├── RemuxService.cs            # (v0.5) Encadena tramos ffmpeg -c copy siguiendo la parrilla
 │   ├── RemuxArguments.cs          # (v0.5) Argumentos de ffmpeg
-│   └── FfmpegProcessRunner.cs     # (v0.5) Lanza el ffmpeg de Jellyfin
-│   ├── AdInserter.cs              # (v0.3) Escanea carpeta de anuncios e intercala
-│   └── YoutubeCache.cs            # (v0.6) Metadatos, descarga a demanda y borrado (yt-dlp)
+│   ├── FfmpegProcessRunner.cs     # (v0.5) Lanza el ffmpeg de Jellyfin
+│   ├── RemuxPlan.cs               # (v0.5) Copiar o recodificar cada pista
+│   ├── YoutubeCache.cs            # (v0.6) Metadatos, descarga a demanda, retención y límite de disco
+│   ├── YoutubeWorker.cs           # (v0.6) Tarea de fondo: metadatos, descargas y borrados
+│   ├── YoutubeChannelUsage.cs     # (v0.6) Qué vídeos usan los canales y cuáles tocan pronto
+│   ├── YoutubeId.cs               # (v0.6) Valida ids y construye la URL canónica
+│   └── YtDlpProcessRunner.cs      # (v0.6) Lanza yt-dlp
+│   └── AdInserter.cs              # (v0.3) Escanea carpeta de anuncios e intercala
 ├── Api/
 │   ├── ChannelsController.cs      # CRUD de canales
 │   ├── NowPlayingController.cs    # item + offset, parrilla, redirect de stream y live.ts
+│   ├── YoutubeController.cs       # (v0.6) Lista, fichero con Range, borrar copia, reintentar
 │   └── GuideController.cs         # epg.xml, channels.m3u y assets
 ├── Web/                           # (v0.2) Ventana propia
 │   ├── player.html
@@ -187,11 +223,15 @@ Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén)
 | `PUT /JellyChannels/channels/{id}` | admin | Reemplaza un canal. Si no se envían `seed` y `startDate`, se conservan |
 | `DELETE /JellyChannels/channels/{id}` | admin | Borra un canal |
 | `GET /JellyChannels/channels/{id}/items` | usuario | Items resueltos del canal, en orden |
-| `GET /JellyChannels/channels/{id}/now` | usuario | Item actual, `startTimeTicks` y siguiente item |
+| `GET /JellyChannels/channels/{id}/now` | usuario | Item actual, `startTimeTicks`, siguiente item y `skipped` (ver YouTube). Cada item lleva `available` y `streamUrl` |
 | `GET /JellyChannels/channels/{id}/schedule?hours=24` | usuario | Parrilla desde ahora |
 | `POST /JellyChannels/channels/refresh` | admin | Vacía la caché de parrillas |
 | `GET /JellyChannels/channels/{id}/stream` | guía | Redirect 302 al stream del canal (para el tuner M3U): a `live.ts` si el remux está activo, y si no al item actual en direct play |
 | `GET /JellyChannels/channels/{id}/live.ts` | guía | (v0.5) MPEG-TS continuo remuxado. 404 si el remux está desactivado, 503 si se alcanzó el máximo de streams |
+| `GET /JellyChannels/youtube` | admin | (v0.6) Vídeos de YouTube conocidos: estado, tamaño, retención, error |
+| `GET /JellyChannels/youtube/{id}/file` | guía | (v0.6) Fichero descargado, con `Range` |
+| `DELETE /JellyChannels/youtube/{id}/cache` | admin | (v0.6) Borra la copia descargada (conserva los metadatos) |
+| `POST /JellyChannels/youtube/{id}/retry` | admin | (v0.6) Olvida los fallos y reintenta ya |
 | `GET /JellyChannels/epg.xml` | guía | EPG XMLTV |
 | `GET /JellyChannels/channels.m3u` | guía | Lista M3U |
 | `GET /JellyChannels/assets/{fichero}` | anónimo | Logos y marcas de agua de `<datos de Jellyfin>/JellyChannels/assets/` |
@@ -206,7 +246,7 @@ Si `id` de un canal no se indica al crearlo, se genera a partir del nombre (`Can
 - .NET SDK 10.
 - Un IDE: Visual Studio, Rider o VS Code con la extensión C#.
 - Jellyfin de pruebas en local o en Docker.
-- Opcional, solo para fuentes de YouTube: `yt-dlp` instalado en el servidor y espacio en disco para la caché.
+- Opcional, solo para fuentes de YouTube: `yt-dlp` instalado en el servidor (se mantiene al día con `yt-dlp -U` o el gestor de paquetes) y espacio en disco para la caché (5 GB por defecto).
 
 ## Pasos de desarrollo
 
@@ -236,7 +276,7 @@ Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así
 
 ## Instalación (una vez compilado)
 
-1. Copiar `Jellyfin.Plugin.JellyChannels.dll` a `<datos de Jellyfin>/plugins/JellyChannels_0.5.0.0/`.
+1. Copiar `Jellyfin.Plugin.JellyChannels.dll` a `<datos de Jellyfin>/plugins/JellyChannels_0.6.0.0/`.
 2. Reiniciar Jellyfin.
 3. Abrir Panel > Plugins > JellyChannels y configurar los canales.
 4. Para Live TV: Panel > Live TV > añadir tuner M3U con `http://<servidor>/JellyChannels/channels.m3u?ApiKey=<clave>` y proveedor XMLTV con `http://<servidor>/JellyChannels/epg.xml?ApiKey=<clave>` (sin `?ApiKey` si se activa el acceso anónimo).
@@ -252,6 +292,8 @@ Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así
 - Si más adelante se quiere marca de agua grabada o salida HLS real, habrá que aceptar ffmpeg como dependencia en ese modo. El remux de la v0.5 ya usa ffmpeg, pero solo para copiar pistas.
 - YouTube cambia con frecuencia y `yt-dlp` necesita mantenerse actualizado, así que las descargas pueden fallar hasta actualizarlo.
 - Si una descarga no termina a tiempo, el canal salta ese item. Por eso el margen de prefetch importa.
+- Cuando un vídeo de YouTube entra en la parrilla (llegan sus metadatos) o sale, la duración del ciclo cambia y la parrilla se desplaza, igual que al añadir episodios a una serie.
+- Las listas de reproducción de YouTube no están soportadas todavía.
 - Descargar de YouTube puede incumplir sus condiciones de servicio: función opcional y desactivada por defecto.
 
 ## Hoja de ruta
@@ -261,4 +303,4 @@ Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así
 - [ ] v0.3: anuncios
 - [ ] v0.4: página de configuración completa
 - [x] v0.5: remux `-c copy` opcional
-- [ ] v0.6: fuentes de YouTube con descarga y borrado a demanda
+- [x] v0.6: fuentes de YouTube con descarga y borrado a demanda (vídeos sueltos)

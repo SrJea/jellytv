@@ -156,10 +156,11 @@ public static class EpgGenerator
         writer.WriteString(Math.Max(1, (long)Math.Round(TimeSpan.FromTicks(item.DurationTicks).TotalMinutes, MidpointRounding.AwayFromZero)).ToString(CultureInfo.InvariantCulture));
         writer.WriteEndElement();
 
-        if (item.ImageItemId is Guid imageId)
+        var image = item.ImageUrl ?? (item.ImageItemId is Guid imageId ? urls.ItemImage(imageId) : null);
+        if (image is not null)
         {
             writer.WriteStartElement("icon");
-            writer.WriteAttributeString("src", urls.ItemImage(imageId));
+            writer.WriteAttributeString("src", image);
             writer.WriteEndElement();
         }
 

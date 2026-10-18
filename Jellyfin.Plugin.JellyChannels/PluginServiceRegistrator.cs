@@ -17,6 +17,12 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ILibraryResolver, LibraryResolver>();
         serviceCollection.AddSingleton<ScheduleService>();
         serviceCollection.AddSingleton<GuideService>();
+        serviceCollection.AddSingleton<IYtDlpRunner, YtDlpProcessRunner>();
+        serviceCollection.AddSingleton<YoutubeCache>();
+        serviceCollection.AddSingleton<IYoutubeCatalog>(provider => provider.GetRequiredService<YoutubeCache>());
+        serviceCollection.AddSingleton<YoutubeChannelUsage>();
+        serviceCollection.AddSingleton<YoutubeWorker>();
+        serviceCollection.AddHostedService(provider => provider.GetRequiredService<YoutubeWorker>());
         serviceCollection.AddSingleton<IPlaybackSourceResolver, PlaybackSourceResolver>();
         serviceCollection.AddSingleton<IFfmpegRunner, FfmpegProcessRunner>();
         serviceCollection.AddSingleton<RemuxService>();

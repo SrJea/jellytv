@@ -23,6 +23,7 @@ public class NowPlayingController : ControllerBase
     private readonly ChannelStore _store;
     private readonly ScheduleService _scheduleService;
     private readonly RemuxService _remuxService;
+    private readonly YoutubeCache _youtube;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NowPlayingController"/> class.
@@ -30,15 +31,19 @@ public class NowPlayingController : ControllerBase
     /// <param name="store">Almacén de canales.</param>
     /// <param name="scheduleService">Servicio de parrilla.</param>
     /// <param name="remuxService">Servicio de remux.</param>
-    public NowPlayingController(ChannelStore store, ScheduleService scheduleService, RemuxService remuxService)
+    /// <param name="youtube">Caché de vídeos de YouTube.</param>
+    public NowPlayingController(ChannelStore store, ScheduleService scheduleService, RemuxService remuxService, YoutubeCache youtube)
     {
         _store = store;
         _scheduleService = scheduleService;
         _remuxService = remuxService;
+        _youtube = youtube;
     }
 
     /// <summary>
-    /// Item actual, offset dentro de él y siguiente item.
+    /// Item actual, offset dentro de él y siguiente item. Si el item que toca es un vídeo de YouTube que aún no
+    /// está descargado, se salta: se devuelve el siguiente item reproducible, desde el principio, con
+    /// <c>skipped</c> a true.
     /// </summary>
     /// <param name="id">Id del canal.</param>
     /// <returns>El estado del canal.</returns>
@@ -54,19 +59,32 @@ public class NowPlayingController : ControllerBase
 
         var schedule = _scheduleService.GetSchedule(channel);
         var now = _scheduleService.Now;
-        var current = schedule.GetEntryAt(now);
-        if (current is null)
+        var scheduled = schedule.GetEntryAt(now);
+        if (scheduled is null)
         {
             return NoContent();
         }
 
-        var next = schedule.GetNext(current);
+        var urls = Request.GuideUrls();
+        var (current, skipped) = FirstPlayable(schedule, scheduled);
+        if (current is null)
+        {
+            // Nada reproducible ahora mismo: se informa del hueco que toca, marcado como no disponible.
+            return RequestExtensions.PluginJson(new NowPlayingDto(
+                channel.Id,
+                now,
+                Describe(scheduled, urls),
+                scheduled.OffsetTicksAt(now),
+                Describe(schedule.GetNext(scheduled), urls)));
+        }
+
         return RequestExtensions.PluginJson(new NowPlayingDto(
             channel.Id,
             now,
-            ScheduleEntryDto.From(current),
-            current.OffsetTicksAt(now),
-            ScheduleEntryDto.From(next)));
+            Describe(current, urls),
+            skipped ? 0 : current.OffsetTicksAt(now),
+            Describe(schedule.GetNext(current), urls),
+            skipped));
     }
 
     /// <summary>
@@ -86,10 +104,11 @@ public class NowPlayingController : ControllerBase
         }
 
         var now = _scheduleService.Now;
+        var urls = Request.GuideUrls();
         var entries = _scheduleService.GetSchedule(channel)
             .GetEntries(now, now.AddHours(Math.Clamp(hours, 1, 336)))
             .Take(5000)
-            .Select(ScheduleEntryDto.From)
+            .Select(entry => Describe(entry, urls))
             .ToList();
         return RequestExtensions.PluginJson(entries);
     }
@@ -117,8 +136,9 @@ public class NowPlayingController : ControllerBase
             return NotFound();
         }
 
-        var current = _scheduleService.GetSchedule(channel).GetEntryAt(_scheduleService.Now);
-        if (current is null)
+        var schedule = _scheduleService.GetSchedule(channel);
+        var scheduled = schedule.GetEntryAt(_scheduleService.Now);
+        if (scheduled is null)
         {
             return NotFound();
         }
@@ -126,6 +146,17 @@ public class NowPlayingController : ControllerBase
         if (_remuxService.IsEnabled)
         {
             return Redirect(Request.GuideUrls().Live(channel));
+        }
+
+        var current = FirstPlayable(schedule, scheduled).Entry;
+        if (current is null)
+        {
+            return NotFound();
+        }
+
+        if (current.Item.YoutubeId is { } videoId)
+        {
+            return Redirect(Request.GuideUrls().YoutubeFile(videoId));
         }
 
         return Redirect(string.Create(CultureInfo.InvariantCulture, $"{Request.BaseUrl()}/Videos/{current.Item.ItemId:N}/stream?static=true"));
@@ -189,5 +220,33 @@ public class NowPlayingController : ControllerBase
         }
 
         return new EmptyResult();
+    }
+
+    private bool IsAvailable(ScheduleItem item) => item.YoutubeId is null || _youtube.GetFilePath(item.YoutubeId) is not null;
+
+    /// <summary>
+    /// Devuelve el primer hueco reproducible a partir de <paramref name="entry"/>, saltando los vídeos de
+    /// YouTube sin descargar.
+    /// </summary>
+    private (ScheduleEntry? Entry, bool Skipped) FirstPlayable(ScheduleEngine schedule, ScheduleEntry entry)
+    {
+        var candidate = entry;
+        for (int i = 0; i < schedule.ItemCount; i++)
+        {
+            if (IsAvailable(candidate.Item))
+            {
+                return (candidate, i > 0);
+            }
+
+            candidate = schedule.GetNext(candidate);
+        }
+
+        return (null, false);
+    }
+
+    private ScheduleEntryDto Describe(ScheduleEntry entry, GuideUrls urls)
+    {
+        bool available = IsAvailable(entry.Item);
+        return ScheduleEntryDto.From(entry, available, available && entry.Item.YoutubeId is { } videoId ? urls.YoutubeFile(videoId) : null);
     }
 }

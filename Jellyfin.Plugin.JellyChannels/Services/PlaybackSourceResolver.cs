@@ -14,16 +14,19 @@ namespace Jellyfin.Plugin.JellyChannels.Services;
 public class PlaybackSourceResolver : IPlaybackSourceResolver
 {
     private readonly IMediaSourceManager _mediaSourceManager;
+    private readonly YoutubeCache _youtube;
     private readonly ILogger<PlaybackSourceResolver> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PlaybackSourceResolver"/> class.
     /// </summary>
     /// <param name="mediaSourceManager">Gestor de fuentes de medios de Jellyfin.</param>
+    /// <param name="youtube">Caché de vídeos de YouTube.</param>
     /// <param name="logger">Logger.</param>
-    public PlaybackSourceResolver(IMediaSourceManager mediaSourceManager, ILogger<PlaybackSourceResolver> logger)
+    public PlaybackSourceResolver(IMediaSourceManager mediaSourceManager, YoutubeCache youtube, ILogger<PlaybackSourceResolver> logger)
     {
         _mediaSourceManager = mediaSourceManager;
+        _youtube = youtube;
         _logger = logger;
     }
 
@@ -31,6 +34,11 @@ public class PlaybackSourceResolver : IPlaybackSourceResolver
     public PlaybackSource? Resolve(ScheduleItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
+
+        if (item.YoutubeId is not null)
+        {
+            return _youtube.GetPlaybackSource(item.YoutubeId);
+        }
 
         if (string.IsNullOrEmpty(item.Path))
         {
