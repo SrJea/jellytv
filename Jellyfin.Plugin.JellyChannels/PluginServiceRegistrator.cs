@@ -17,6 +17,8 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ILibraryResolver, LibraryResolver>();
         serviceCollection.AddSingleton<ScheduleService>();
         serviceCollection.AddSingleton<GuideService>();
+        serviceCollection.AddSingleton<LiveTvRegistrar>();
+        serviceCollection.AddHostedService(provider => provider.GetRequiredService<LiveTvRegistrar>());
         serviceCollection.AddSingleton<IYtDlpRunner, YtDlpProcessRunner>();
         serviceCollection.AddSingleton<YoutubeCache>();
         serviceCollection.AddSingleton<IYoutubeCatalog>(provider => provider.GetRequiredService<YoutubeCache>());

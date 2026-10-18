@@ -70,8 +70,8 @@ Plugin ligero para Jellyfin que crea canales de TV lineales (estilo Tunarr / Ers
 ### 4. Integración con Jellyfin
 
 **Vía A: Live TV nativo**
-- Exponer `channels.m3u` y `epg.xml` y añadirlos como tuner M3U y proveedor XMLTV en Jellyfin.
-- Más adelante, implementar `ITunerHost` e `IListingsProvider` dentro del plugin para que se instalen solos.
+- Exponer `channels.m3u` y `epg.xml` y registrarlos como tuner M3U y proveedor XMLTV en Jellyfin. El plugin lo hace solo (ver *Live TV automático* más abajo); también se puede hacer a mano.
+- Hecho de otra forma: en lugar de un `ITunerHost` propio, el plugin registra solo el tuner M3U y la guía XMLTV que ya trae Jellyfin (ver *Live TV automático*).
 - Limitación: al terminar cada item el reproductor puede cortar y hay que volver a sintonizar.
 
 **Vía B: ventana propia (recomendada)**
@@ -276,6 +276,22 @@ La DLL queda en `Jellyfin.Plugin.JellyChannels/bin/Release/net10.0/Jellyfin.Plug
 
 Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así que no necesitan ffmpeg instalado.
 
+## Live TV automático
+
+Al instalar el plugin no hay que configurar nada en Live TV. Unos 20 segundos después de arrancar Jellyfin (y siempre que cambies los ajustes) el plugin deja registrados:
+
+- un **tuner M3U** llamado «JellyChannels» que apunta a `channels.m3u`,
+- un **proveedor de guía XMLTV** que apunta a `epg.xml`,
+- y una **clave de API** llamada «JellyChannels (Live TV)» (Panel > Claves de API) que usan esas dos entradas. Las URLs son locales (`127.0.0.1`), así que no dependen de tu dominio ni del puerto que uses por fuera.
+
+Cuando creas, editas o borras un canal, el plugin refresca la guía de Live TV a los pocos segundos y el canal aparece (o desaparece) en las listas de Live TV.
+
+- Si ya habías añadido a mano el tuner y la guía, los **adopta**: actualiza sus URLs y no los duplica. Si hay más de uno de cada, deja uno.
+- No toca ningún otro tuner ni guía.
+- Se desactiva en Ajustes > General (*Registrar JellyChannels en Live TV automáticamente*). Al desactivarlo quita el tuner, la guía y la clave que creó.
+- En la sección *Live TV* de la página del plugin se ve si está registrado y hay un botón para sincronizar al momento.
+- Un tuner M3U de Jellyfin necesita que la clave de API sea válida: no la borres desde Panel > Claves de API (el plugin la recrea en el siguiente repaso, pero entre medias Live TV no podrá leer los canales).
+
 ## Crear canales: el editor visual
 
 En el menú lateral, *Complementos* > *JellyChannels*. Pensado para usarse también desde el móvil.
@@ -319,7 +335,7 @@ El ZIP y el manifiesto salen de la misma ejecución, así que el checksum del ma
 1. Copiar `Jellyfin.Plugin.JellyChannels.dll` a `<datos de Jellyfin>/plugins/JellyChannels_0.6.0.0/`.
 2. Reiniciar Jellyfin.
 3. Abrir Panel > Plugins > JellyChannels y configurar los canales.
-4. Para Live TV: Panel > Live TV > añadir tuner M3U con `http://<servidor>/JellyChannels/channels.m3u?ApiKey=<clave>` y proveedor XMLTV con `http://<servidor>/JellyChannels/epg.xml?ApiKey=<clave>` (sin `?ApiKey` si se activa el acceso anónimo).
+4. Para Live TV no hace falta hacer nada: el plugin añade solo el tuner y la guía (ver *Live TV automático*). Si desactivas el registro automático, añade a mano en Panel > Live TV un tuner M3U con `http://<servidor>/JellyChannels/channels.m3u?ApiKey=<clave>` y un proveedor XMLTV con `http://<servidor>/JellyChannels/epg.xml?ApiKey=<clave>` (sin `?ApiKey` si se activa el acceso anónimo).
 5. Para la ventana propia: abrir `/JellyChannels/Web`.
 
 ## Riesgos y decisiones abiertas

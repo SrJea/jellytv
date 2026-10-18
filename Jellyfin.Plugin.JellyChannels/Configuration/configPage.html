@@ -120,14 +120,29 @@
                 <h3>Vídeos de YouTube</h3>
                 <div id="jcYoutubeList"></div>
 
-                <h3>URLs para Live TV</h3>
-                <div class="fieldDescription">Tuner M3U: <code id="jcM3uUrl"></code></div>
-                <div class="fieldDescription">Proveedor XMLTV: <code id="jcEpgUrl"></code></div>
+                <h3>Live TV</h3>
+                <div id="jcLiveTvStatus" class="jcCard"></div>
+                <div class="jcButtons">
+                    <button is="emby-button" type="button" id="jcLiveTvSync" class="raised emby-button"><span>Sincronizar con Live TV ahora</span></button>
+                </div>
+                <details class="jcSection">
+                    <summary>Configuración manual de Live TV</summary>
+                    <div class="fieldDescription">Solo hace falta si desactivas el registro automático. Añade un tuner M3U y un proveedor de guía XMLTV con estas URLs (con <code>?ApiKey=TU_CLAVE</code> al final si no sirves la guía sin autenticación).</div>
+                    <div class="fieldDescription">Tuner M3U: <code id="jcM3uUrl"></code></div>
+                    <div class="fieldDescription">Proveedor XMLTV: <code id="jcEpgUrl"></code></div>
+                </details>
 
                 <h3>Ajustes</h3>
                 <form id="JellyChannelsConfigForm">
                     <details class="jcSection">
                         <summary>General</summary>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="AutoRegisterLiveTv" type="checkbox" is="emby-checkbox" />
+                                <span>Registrar JellyChannels en Live TV automáticamente</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Añade solo el tuner y la guía a Live TV y refresca la guía cuando creas, editas o borras un canal. Crea una clave de API llamada «JellyChannels (Live TV)» (Panel &gt; Claves de API) que se retira al desactivar esta opción. Si ya los habías añadido a mano, los adopta en vez de duplicarlos.</div>
+                        </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="AllowAnonymousGuide" type="checkbox" is="emby-checkbox" />
@@ -753,6 +768,21 @@
                     });
                 }
 
+                function loadLiveTv() {
+                    return api('GET', 'JellyChannels/livetv').then(function (status) {
+                        var box = $('#jcLiveTvStatus');
+                        if (!status.autoRegister) {
+                            box.textContent = 'El registro automático está desactivado. Añade el tuner y la guía a mano con las URLs de «Configuración manual», o actívalo en Ajustes > General.';
+                        } else if (status.tunerRegistered && status.listingsRegistered) {
+                            box.textContent = 'Registrado en Live TV: el tuner «JellyChannels» y su guía están añadidos. Los canales aparecen solos en las listas de Live TV; al crear, editar o borrar un canal se refresca la guía.';
+                        } else {
+                            box.textContent = 'Todavía no está registrado. El plugin lo hace unos segundos después de arrancar el servidor o al pulsar «Sincronizar con Live TV ahora».';
+                        }
+                    }).catch(function () {
+                        $('#jcLiveTvStatus').textContent = 'No se pudo consultar el estado de Live TV.';
+                    });
+                }
+
                 function loadYoutube() {
                     return api('GET', 'JellyChannels/youtube').then(function (videos) {
                         state.youtube = {};
@@ -878,6 +908,15 @@
                 $('#jcDeleteChannel').addEventListener('click', deleteChannel);
                 $('#jcApplyJson').addEventListener('click', applyJson);
 
+                $('#jcLiveTvSync').addEventListener('click', function () {
+                    $('#jcLiveTvStatus').textContent = 'Sincronizando con Live TV…';
+                    api('POST', 'JellyChannels/livetv/sync', undefined, false).then(function () {
+                        setTimeout(loadLiveTv, 8000);
+                    }).catch(function () {
+                        loadLiveTv();
+                    });
+                });
+
                 $('#jcRefresh').addEventListener('click', function () {
                     api('POST', 'JellyChannels/channels/refresh', undefined, false).then(function () {
                         flash('Parrillas recalculadas.');
@@ -893,6 +932,7 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         state.config = config;
                         $('#AllowAnonymousGuide').checked = config.AllowAnonymousGuide;
+                        $('#AutoRegisterLiveTv').checked = config.AutoRegisterLiveTv;
                         $('#EnableRemux').checked = config.EnableRemux;
                         $('#RemuxAllowTranscode').checked = config.RemuxAllowTranscode;
                         $('#MaxRemuxStreams').value = config.MaxRemuxStreams;
@@ -903,7 +943,7 @@
                         $('#YoutubePrefetchMinutes').value = config.YoutubePrefetchMinutes;
                         $('#YoutubeMaxCacheMb').value = config.YoutubeMaxCacheMb;
                         $('#YoutubeFormat').value = config.YoutubeFormat;
-                        return Promise.all([loadChannels(), loadYoutube()]);
+                        return Promise.all([loadChannels(), loadYoutube(), loadLiveTv()]);
                     }).finally(function () {
                         Dashboard.hideLoadingMsg();
                     });
@@ -914,6 +954,7 @@
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         config.AllowAnonymousGuide = $('#AllowAnonymousGuide').checked;
+                        config.AutoRegisterLiveTv = $('#AutoRegisterLiveTv').checked;
                         config.EnableYoutube = $('#EnableYoutube').checked;
                         config.YtDlpPath = $('#YtDlpPath').value.trim() || 'yt-dlp';
                         config.YoutubePrefetchMinutes = Math.max(1, parseInt($('#YoutubePrefetchMinutes').value, 10) || 30);
@@ -930,6 +971,8 @@
                         Dashboard.processPluginConfigurationUpdateResult(result);
                         loadChannels();
                         loadYoutube();
+                        // El registro en Live TV se repasa unos segundos después de guardar.
+                        setTimeout(loadLiveTv, 9000);
                     });
                     return false;
                 });
