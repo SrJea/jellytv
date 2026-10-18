@@ -161,7 +161,7 @@ Se activa en los ajustes del plugin (*Stream continuo*). Añade `GET /JellyChann
 
 **Límites (importantes)**
 
-- Con vídeo copiado no se puede empezar en un punto cualquiera, solo en un keyframe. Al sintonizar a mitad de un item, según el contenedor el stream empieza hasta un GOP antes de lo que dice la guía (unos segundos en la mayoría de ficheros) o el audio sale primero y el vídeo aparece en el siguiente keyframe. Con vídeo recodificado el salto es exacto. El desfase no se acumula: cada tramo siguiente se recalcula con el reloj.
+- Al sintonizar a mitad de un item, una pista copiada solo puede empezar en un keyframe (el anterior, así que hasta un GOP antes de lo que dice la guía, unos segundos en la mayoría de ficheros), mientras que una pista recodificada empieza en el punto exacto. Si las dos se copian o las dos se recodifican, empiezan juntas. Si una se copia y la otra no (por ejemplo vídeo 4:4:4 recodificado con audio AAC copiado), durante el primer segundo o dos solo se oye o solo se ve. No es un desfase: medido con un clip de sincronía, audio y vídeo quedan alineados con una diferencia de 0,06 a 0,13 s en los cuatro casos. El desfase no se acumula: cada tramo siguiente se recalcula con el reloj.
 - Entre items hay un pequeño hueco (la puesta en marcha de ffmpeg y un margen de 0,2 s para que el DTS no retroceda).
 - Recodificar usa CPU (solo mientras se emite un fichero que lo necesite, y es CPU, no aceleración por hardware). `veryfast` aguanta tiempo real con 1080p en una CPU moderna, pero no en un equipo muy justo; si va lento, el stream se entrecorta.
 - La resolución y la tasa de fotogramas no se unifican: si cambian entre items, el SPS cambia a mitad del stream y casi todos los reproductores lo toleran, pero no se garantiza.
