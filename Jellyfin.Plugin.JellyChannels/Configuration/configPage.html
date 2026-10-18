@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>JellyChannels</title>
+</head>
+<body>
+    <div id="JellyChannelsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-textarea">
+        <div data-role="content">
+            <div class="content-primary">
+                <h2>JellyChannels</h2>
+
+                <form id="JellyChannelsConfigForm">
+                    <h3>Ajustes generales</h3>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="AllowAnonymousGuide" type="checkbox" is="emby-checkbox" />
+                            <span>Servir epg.xml, channels.m3u y los streams sin autenticación</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Si está desactivado, añade <code>?ApiKey=TU_CLAVE</code> a las URLs (Panel &gt; Claves de API).</div>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableRemux" type="checkbox" is="emby-checkbox" />
+                            <span>Stream continuo (remux con ffmpeg)</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Usa el ffmpeg de Jellyfin. Hace que el tuner de Live TV reciba un stream continuo que empieza donde toca. Hay un proceso ffmpeg por espectador mientras ve el canal. Lo que ya es H.264 y AAC se copia sin recodificar.</div>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="RemuxAllowTranscode" type="checkbox" is="emby-checkbox" />
+                            <span>Recodificar lo que no sea H.264 / AAC</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Así los ficheros de un canal pueden tener códecs distintos. Consume CPU solo mientras se emite un fichero que lo necesite. Si lo desactivas, todo se copia y los ficheros de un canal deben compartir códecs.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxRemuxStreams">Máximo de streams remuxados a la vez</label>
+                        <input id="MaxRemuxStreams" type="number" is="emby-input" min="1" />
+                    </div>
+                    <h3>YouTube</h3>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableYoutube" type="checkbox" is="emby-checkbox" />
+                            <span>Permitir fuentes de YouTube</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Los vídeos no se descargan al añadirlos: solo se leen sus metadatos (título y duración), con los que ya entran en la parrilla y la guía. El fichero se baja poco antes de que toque emitirlo y se borra según la retención de la fuente. Necesita <code>yt-dlp</code> instalado en el servidor. Descargar vídeos puede incumplir las condiciones de servicio de YouTube y los derechos de autor del contenido: úsalo solo para uso personal con contenido que tengas derecho a guardar.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YtDlpPath">Ruta de yt-dlp</label>
+                        <input id="YtDlpPath" type="text" is="emby-input" />
+                        <div class="fieldDescription">Ruta del binario, o <code>yt-dlp</code> si está en el PATH. YouTube cambia a menudo: si las descargas empiezan a fallar, actualiza yt-dlp.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YoutubePrefetchMinutes">Descargar con antelación (minutos)</label>
+                        <input id="YoutubePrefetchMinutes" type="number" is="emby-input" min="1" />
+                        <div class="fieldDescription">Si un vídeo no está listo cuando le toca, el canal salta al siguiente item y lo reintenta después.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YoutubeMaxCacheMb">Límite de la caché (MB, 0 sin límite)</label>
+                        <input id="YoutubeMaxCacheMb" type="number" is="emby-input" min="0" />
+                        <div class="fieldDescription">Al superarlo se borran primero los ya emitidos, los más antiguos primero. Los de retención <code>keep</code> no se borran.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="YoutubeFormat">Formato de yt-dlp</label>
+                        <input id="YoutubeFormat" type="text" is="emby-input" />
+                        <div class="fieldDescription">Por defecto <code>b[ext=mp4]/b</code>: un solo archivo, sin ffmpeg para unir pistas. La calidad máxima de esos formatos es limitada.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="LibraryCacheMinutes">Caché de la biblioteca (minutos)</label>
+                        <input id="LibraryCacheMinutes" type="number" is="emby-input" min="0" />
+                        <div class="fieldDescription">Cada cuánto se vuelven a leer los items de cada canal.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EpgCacheMinutes">Caché del EPG (minutos)</label>
+                        <input id="EpgCacheMinutes" type="number" is="emby-input" min="0" />
+                    </div>
+                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                        <span>Guardar ajustes</span>
+                    </button>
+                </form>
+
+                <h3>URLs para Live TV</h3>
+                <div class="fieldDescription">Tuner M3U: <code id="jcM3uUrl"></code></div>
+                <div class="fieldDescription">Proveedor XMLTV: <code id="jcEpgUrl"></code></div>
+
+                <h3>Vídeos de YouTube</h3>
+                <div id="jcYoutubeList"></div>
+
+                <h3>Canales</h3>
+                <div id="jcChannelList"></div>
+                <button is="emby-button" type="button" id="jcNewChannel" class="raised emby-button"><span>Nuevo canal</span></button>
+                <button is="emby-button" type="button" id="jcRefresh" class="raised emby-button"><span>Recalcular parrillas</span></button>
+
+                <div id="jcEditor" style="display:none; margin-top:1.5em;">
+                    <h3 id="jcEditorTitle">Canal</h3>
+                    <div class="inputContainer">
+                        <textarea is="emby-textarea" id="jcChannelJson" rows="22" style="font-family:monospace; width:100%;"></textarea>
+                        <div class="fieldDescription">Formato descrito en el README (sources: series, movie, collection, tag; mode: sequential, shuffle, seeded-shuffle). Los ids son los de los items de Jellyfin.</div>
+                    </div>
+                    <button is="emby-button" type="button" id="jcSaveChannel" class="raised button-submit emby-button"><span>Guardar canal</span></button>
+                    <button is="emby-button" type="button" id="jcDeleteChannel" class="raised emby-button"><span>Borrar canal</span></button>
+                    <button is="emby-button" type="button" id="jcCancel" class="raised emby-button"><span>Cancelar</span></button>
+                </div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var pluginId = '83abdf93-106c-418c-be99-ed5dad2ef9c6';
+                var page = document.querySelector('#JellyChannelsConfigPage');
+                var editingId = null;
+
+                var template = {
+                    name: 'Canal nuevo',
+                    number: 0,
+                    logo: null,
+                    sources: [{ type: 'series', id: '<jellyfin-item-id>' }],
+                    mode: 'sequential',
+                    epgDays: 3
+                };
+
+                // Solo se pide JSON cuando la respuesta trae cuerpo; refresh y DELETE devuelven 204
+                // y el intento de parsearlo hacía fallar la promesa.
+                function api(type, path, body, expectJson) {
+                    var options = { type: type, url: ApiClient.getUrl(path) };
+                    if (body !== undefined) {
+                        options.data = JSON.stringify(body);
+                        options.contentType = 'application/json';
+                    }
+                    if (expectJson !== false && (type === 'GET' || body !== undefined)) {
+                        options.dataType = 'json';
+                    }
+                    return ApiClient.ajax(options);
+                }
+
+                function escapeHtml(value) {
+                    var div = document.createElement('div');
+                    div.textContent = value == null ? '' : String(value);
+                    return div.innerHTML;
+                }
+
+                var stateLabels = { cached: 'Descargado', ready: 'Pendiente de descarga', pending: 'Leyendo metadatos', error: 'Error' };
+
+                function formatSize(bytes) {
+                    return bytes ? (bytes / 1048576).toFixed(1) + ' MB' : '';
+                }
+
+                function loadYoutube() {
+                    return api('GET', 'JellyChannels/youtube').then(function (videos) {
+                        var list = page.querySelector('#jcYoutubeList');
+                        if (!videos.length) {
+                            list.innerHTML = '<p>No hay vídeos de YouTube. Añade una fuente <code>{"type": "youtube", "url": "https://www.youtube.com/watch?v=...", "retention": "delete-after-airing"}</code> a un canal.</p>';
+                            return;
+                        }
+
+                        list.innerHTML = videos.map(function (v) {
+                            var detail = [stateLabels[v.state] || v.state, formatSize(v.sizeBytes), v.retention].filter(Boolean).join(' · ');
+                            var error = v.lastError ? '<div class="listItemBodyText secondary">' + escapeHtml(v.lastError) + '</div>' : '';
+                            var buttons = (v.state === 'cached' ? '<button is="emby-button" type="button" class="raised emby-button jcYtDelete" data-id="' + escapeHtml(v.id) + '"><span>Borrar copia</span></button>' : '')
+                                + (v.state === 'error' ? '<button is="emby-button" type="button" class="raised emby-button jcYtRetry" data-id="' + escapeHtml(v.id) + '"><span>Reintentar</span></button>' : '');
+                            return '<div class="listItem"><div class="listItemBody">'
+                                + '<h3 class="listItemBodyText">' + escapeHtml(v.title || v.id) + '</h3>'
+                                + '<div class="listItemBodyText secondary">' + escapeHtml(v.id) + ' · ' + escapeHtml(detail) + '</div>' + error
+                                + '</div>' + buttons + '</div>';
+                        }).join('');
+
+                        list.querySelectorAll('.jcYtDelete').forEach(function (button) {
+                            button.addEventListener('click', function () {
+                                api('DELETE', 'JellyChannels/youtube/' + encodeURIComponent(button.getAttribute('data-id')) + '/cache', undefined, false).then(loadYoutube);
+                            });
+                        });
+
+                        list.querySelectorAll('.jcYtRetry').forEach(function (button) {
+                            button.addEventListener('click', function () {
+                                api('POST', 'JellyChannels/youtube/' + encodeURIComponent(button.getAttribute('data-id')) + '/retry', undefined, false).then(loadYoutube);
+                            });
+                        });
+                    });
+                }
+
+                function showEditor(channel) {
+                    editingId = channel && channel.id ? channel.id : null;
+                    page.querySelector('#jcEditorTitle').textContent = editingId ? 'Editar ' + channel.name : 'Nuevo canal';
+                    page.querySelector('#jcChannelJson').value = JSON.stringify(channel || template, null, 2);
+                    page.querySelector('#jcDeleteChannel').style.display = editingId ? '' : 'none';
+                    page.querySelector('#jcEditor').style.display = '';
+                }
+
+                function hideEditor() {
+                    editingId = null;
+                    page.querySelector('#jcEditor').style.display = 'none';
+                }
+
+                function loadChannels() {
+                    return api('GET', 'JellyChannels/channels').then(function (channels) {
+                        var list = page.querySelector('#jcChannelList');
+                        if (!channels.length) {
+                            list.innerHTML = '<p>No hay canales.</p>';
+                            return;
+                        }
+
+                        list.innerHTML = channels.map(function (c) {
+                            return '<div class="listItem"><div class="listItemBody">'
+                                + '<h3 class="listItemBodyText">' + escapeHtml(c.number) + ' · ' + escapeHtml(c.name) + '</h3>'
+                                + '<div class="listItemBodyText secondary">' + escapeHtml(c.id) + ' · ' + escapeHtml(c.mode) + ' · ' + c.sources.length + ' fuentes'
+                                + ' · <span class="jcNow" data-id="' + escapeHtml(c.id) + '"></span></div>'
+                                + '</div><button is="emby-button" type="button" class="raised emby-button jcEdit" data-id="' + escapeHtml(c.id) + '"><span>Editar</span></button></div>';
+                        }).join('');
+
+                        list.querySelectorAll('.jcEdit').forEach(function (button) {
+                            button.addEventListener('click', function () {
+                                api('GET', 'JellyChannels/channels/' + encodeURIComponent(button.getAttribute('data-id'))).then(showEditor);
+                            });
+                        });
+
+                        list.querySelectorAll('.jcNow').forEach(function (span) {
+                            api('GET', 'JellyChannels/channels/' + encodeURIComponent(span.getAttribute('data-id')) + '/now').then(function (now) {
+                                if (now && now.current) {
+                                    var c = now.current;
+                                    span.textContent = 'Ahora: ' + c.title + (c.episodeTitle ? ' - ' + c.episodeTitle : '');
+                                }
+                            }).catch(function () {
+                                span.textContent = 'Sin items';
+                            });
+                        });
+                    });
+                }
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    var base = ApiClient.serverAddress();
+                    page.querySelector('#jcM3uUrl').textContent = base + '/JellyChannels/channels.m3u';
+                    page.querySelector('#jcEpgUrl').textContent = base + '/JellyChannels/epg.xml';
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        page.querySelector('#AllowAnonymousGuide').checked = config.AllowAnonymousGuide;
+                        page.querySelector('#EnableRemux').checked = config.EnableRemux;
+                        page.querySelector('#RemuxAllowTranscode').checked = config.RemuxAllowTranscode;
+                        page.querySelector('#MaxRemuxStreams').value = config.MaxRemuxStreams;
+                        page.querySelector('#LibraryCacheMinutes').value = config.LibraryCacheMinutes;
+                        page.querySelector('#EpgCacheMinutes').value = config.EpgCacheMinutes;
+                        page.querySelector('#EnableYoutube').checked = config.EnableYoutube;
+                        page.querySelector('#YtDlpPath').value = config.YtDlpPath;
+                        page.querySelector('#YoutubePrefetchMinutes').value = config.YoutubePrefetchMinutes;
+                        page.querySelector('#YoutubeMaxCacheMb').value = config.YoutubeMaxCacheMb;
+                        page.querySelector('#YoutubeFormat').value = config.YoutubeFormat;
+                        return Promise.all([loadChannels(), loadYoutube()]);
+                    }).finally(function () {
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                page.querySelector('#JellyChannelsConfigForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.AllowAnonymousGuide = page.querySelector('#AllowAnonymousGuide').checked;
+                        config.EnableYoutube = page.querySelector('#EnableYoutube').checked;
+                        config.YtDlpPath = page.querySelector('#YtDlpPath').value.trim() || 'yt-dlp';
+                        config.YoutubePrefetchMinutes = Math.max(1, parseInt(page.querySelector('#YoutubePrefetchMinutes').value, 10) || 30);
+                        config.YoutubeMaxCacheMb = Math.max(0, parseInt(page.querySelector('#YoutubeMaxCacheMb').value, 10) || 0);
+                        config.YoutubeFormat = page.querySelector('#YoutubeFormat').value.trim() || 'b[ext=mp4]/b';
+                        config.EnableRemux = page.querySelector('#EnableRemux').checked;
+                        config.RemuxAllowTranscode = page.querySelector('#RemuxAllowTranscode').checked;
+                        config.MaxRemuxStreams = Math.max(1, parseInt(page.querySelector('#MaxRemuxStreams').value, 10) || 1);
+                        config.LibraryCacheMinutes = parseInt(page.querySelector('#LibraryCacheMinutes').value, 10) || 0;
+                        config.EpgCacheMinutes = parseInt(page.querySelector('#EpgCacheMinutes').value, 10) || 0;
+                        return ApiClient.updatePluginConfiguration(pluginId, config);
+                    }).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                        loadChannels();
+                        loadYoutube();
+                    });
+                    return false;
+                });
+
+                page.querySelector('#jcNewChannel').addEventListener('click', function () {
+                    showEditor(null);
+                });
+
+                page.querySelector('#jcCancel').addEventListener('click', hideEditor);
+
+                page.querySelector('#jcRefresh').addEventListener('click', function () {
+                    api('POST', 'JellyChannels/channels/refresh', undefined, false).then(function () {
+                        Dashboard.alert('Parrillas recalculadas.');
+                        loadChannels();
+                    });
+                });
+
+                page.querySelector('#jcSaveChannel').addEventListener('click', function () {
+                    var channel;
+                    try {
+                        channel = JSON.parse(page.querySelector('#jcChannelJson').value);
+                    } catch (err) {
+                        Dashboard.alert('JSON no válido: ' + err.message);
+                        return;
+                    }
+
+                    var request = editingId
+                        ? api('PUT', 'JellyChannels/channels/' + encodeURIComponent(editingId), channel)
+                        : api('POST', 'JellyChannels/channels', channel);
+                    request.then(function () {
+                        hideEditor();
+                        loadChannels();
+                    }).catch(function () {
+                        Dashboard.alert('No se pudo guardar el canal.');
+                    });
+                });
+
+                page.querySelector('#jcDeleteChannel').addEventListener('click', function () {
+                    if (!editingId || !window.confirm('¿Borrar el canal ' + editingId + '?')) {
+                        return;
+                    }
+
+                    api('DELETE', 'JellyChannels/channels/' + encodeURIComponent(editingId), undefined, false).then(function () {
+                        hideEditor();
+                        loadChannels();
+                    });
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>
