@@ -83,7 +83,7 @@ Plugin ligero para Jellyfin que crea canales de TV lineales (estilo Tunarr / Ers
 ### 5. Sobre ffmpeg
 
 - Modo por defecto: no se usa.
-- Opcional y desactivado por defecto: remux `-c copy` usando el ffmpeg que ya trae Jellyfin, para dar un stream continuo a clientes que solo hablan Live TV. No transcodifica, consume muy poca CPU.
+- Opcional y desactivado por defecto (v0.5): remux `-c copy` usando el ffmpeg que ya trae Jellyfin, para dar un stream continuo a clientes que solo hablan Live TV. No transcodifica, consume muy poca CPU. Detalles en la sección *Remux* más abajo.
 - Marca de agua grabada en vídeo: solo sería posible recodificando. Queda fuera del alcance.
 
 ### 6. Vídeos de YouTube (descarga y borrado a demanda)
@@ -114,6 +114,27 @@ Un canal puede incluir fuentes de tipo `youtube`: un vídeo suelto o, más adela
 
 **Nota legal**: descargar vídeos puede incumplir las condiciones de servicio de YouTube y los derechos de autor del contenido. Está pensado para uso personal con contenido que tengas derecho a guardar. La función va desactivada por defecto.
 
+## Remux (v0.5)
+
+Se activa en los ajustes del plugin (*Stream continuo*). Añade `GET /JellyChannels/channels/{id}/live.ts`, un MPEG-TS continuo que sigue la parrilla: empieza en el item y el punto que tocan ahora y, al acabar cada item, encadena el siguiente sin que el cliente tenga que volver a sintonizar. Con el remux activo, `/channels/{id}/stream` (la URL del M3U) redirige a `live.ts` en vez de al fichero suelto, así que el tuner de Live TV lo usa sin cambiar nada.
+
+**Cómo funciona**
+
+- Usa el ffmpeg de Jellyfin (`IMediaEncoder.EncoderPath`). No hay ruta que configurar ni binario que instalar.
+- Un proceso ffmpeg por espectador y solo mientras ve el canal. Cuando el cliente se desconecta, se mata el proceso. No hay procesos permanentes por canal.
+- Cada item es un tramo `ffmpeg -re -ss <offset> -i <fichero> -c copy -f mpegts`: copia de pistas, sin recodificar, a velocidad real, con la primera pista de vídeo y la primera de audio. La parrilla decide qué tramo toca, y los fallos se tratan así: si un fichero no se puede remuxar se reintenta dos veces y se espera al siguiente item; tras tres huecos seguidos imposibles se cierra el stream.
+- Las marcas de tiempo del stream nunca retroceden: cada tramo empieza en `max(reloj, final del tramo anterior)` y el muxer marca el salto con el *discontinuity indicator*.
+- Al abrir el canal desde Live TV, Jellyfin mantiene el stream (y por tanto el ffmpeg del plugin) abierto hasta que el cliente cierra la reproducción.
+- Límite de streams simultáneos configurable (2 por defecto). Pasado el límite, `live.ts` responde 503 con `Retry-After`.
+
+**Límites (importantes)**
+
+- Con `-c copy` el salto de `-ss` cae en el keyframe anterior, así que al sintonizar a mitad de un item el stream puede empezar hasta un GOP antes de lo que dice la guía (unos segundos en la mayoría de ficheros). El desfase no se acumula: cada tramo siguiente se recalcula con el reloj.
+- Entre items hay un pequeño hueco (la puesta en marcha de ffmpeg, décimas de segundo).
+- No se recodifica, así que los ficheros de un canal deberían compartir códecs. Si cambian entre items (por ejemplo h264 y hevc, o AAC y AC3), el PMT cambia a mitad del stream y no todos los reproductores lo toleran. Probado con h264/AAC.
+- Solo ficheros locales. Los items que no lo sean se saltan.
+- No añade marca de agua ni anuncios al vídeo (eso exigiría recodificar).
+
 ## Estructura del proyecto
 
 ```
@@ -136,11 +157,14 @@ Jellyfin.Plugin.JellyChannels/
 │   ├── EpgGenerator.cs            # Genera XMLTV
 │   ├── M3uGenerator.cs
 │   ├── GuideService.cs            # Caché del EPG
+│   ├── RemuxService.cs            # (v0.5) Encadena tramos ffmpeg -c copy siguiendo la parrilla
+│   ├── RemuxArguments.cs          # (v0.5) Argumentos de ffmpeg
+│   └── FfmpegProcessRunner.cs     # (v0.5) Lanza el ffmpeg de Jellyfin
 │   ├── AdInserter.cs              # (v0.3) Escanea carpeta de anuncios e intercala
 │   └── YoutubeCache.cs            # (v0.6) Metadatos, descarga a demanda y borrado (yt-dlp)
 ├── Api/
 │   ├── ChannelsController.cs      # CRUD de canales
-│   ├── NowPlayingController.cs    # item + offset, parrilla y redirect de stream
+│   ├── NowPlayingController.cs    # item + offset, parrilla, redirect de stream y live.ts
 │   └── GuideController.cs         # epg.xml, channels.m3u y assets
 ├── Web/                           # (v0.2) Ventana propia
 │   ├── player.html
@@ -150,7 +174,7 @@ Jellyfin.Plugin.JellyChannels/
 Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén)
 ```
 
-## API (v0.1)
+## API
 
 | Método y ruta | Acceso | Qué hace |
 |---|---|---|
@@ -163,7 +187,8 @@ Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén)
 | `GET /JellyChannels/channels/{id}/now` | usuario | Item actual, `startTimeTicks` y siguiente item |
 | `GET /JellyChannels/channels/{id}/schedule?hours=24` | usuario | Parrilla desde ahora |
 | `POST /JellyChannels/channels/refresh` | admin | Vacía la caché de parrillas |
-| `GET /JellyChannels/channels/{id}/stream` | guía | Redirect 302 al stream del item actual (para el tuner M3U) |
+| `GET /JellyChannels/channels/{id}/stream` | guía | Redirect 302 al stream del canal (para el tuner M3U): a `live.ts` si el remux está activo, y si no al item actual en direct play |
+| `GET /JellyChannels/channels/{id}/live.ts` | guía | (v0.5) MPEG-TS continuo remuxado. 404 si el remux está desactivado, 503 si se alcanzó el máximo de streams |
 | `GET /JellyChannels/epg.xml` | guía | EPG XMLTV |
 | `GET /JellyChannels/channels.m3u` | guía | Lista M3U |
 | `GET /JellyChannels/assets/{fichero}` | anónimo | Logos y marcas de agua de `<datos de Jellyfin>/JellyChannels/assets/` |
@@ -204,9 +229,11 @@ dotnet test Jellyfin.Plugin.JellyChannels.slnx
 
 La DLL queda en `Jellyfin.Plugin.JellyChannels/bin/Release/net10.0/Jellyfin.Plugin.JellyChannels.dll`.
 
+Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así que no necesitan ffmpeg instalado.
+
 ## Instalación (una vez compilado)
 
-1. Copiar `Jellyfin.Plugin.JellyChannels.dll` a `<datos de Jellyfin>/plugins/JellyChannels_0.1.0.0/`.
+1. Copiar `Jellyfin.Plugin.JellyChannels.dll` a `<datos de Jellyfin>/plugins/JellyChannels_0.5.0.0/`.
 2. Reiniciar Jellyfin.
 3. Abrir Panel > Plugins > JellyChannels y configurar los canales.
 4. Para Live TV: Panel > Live TV > añadir tuner M3U con `http://<servidor>/JellyChannels/channels.m3u?ApiKey=<clave>` y proveedor XMLTV con `http://<servidor>/JellyChannels/epg.xml?ApiKey=<clave>` (sin `?ApiKey` si se activa el acceso anónimo).
@@ -215,11 +242,11 @@ La DLL queda en `Jellyfin.Plugin.JellyChannels/bin/Release/net10.0/Jellyfin.Plug
 ## Riesgos y decisiones abiertas
 
 - Algunos clientes de Jellyfin (TV, móvil) solo usan Live TV, donde el cambio entre items puede cortar la reproducción. Por eso la ventana propia es la vía principal.
-- En Live TV, el redirect de stream sirve el fichero en direct play (`static=true`), que no admite empezar en un offset: al sintonizar, el item empieza desde el principio aunque la guía diga que va por la mitad. El remux opcional (v0.5) lo resolvería.
+- En Live TV sin remux, el redirect de stream sirve el fichero en direct play (`static=true`), que no admite empezar en un offset: al sintonizar, el item empieza desde el principio aunque la guía diga que va por la mitad. Activar el remux (v0.5) lo resuelve, con los límites descritos en su sección.
 - La parrilla se calcula a partir de la lista de items. Si se añaden o quitan episodios de una fuente, la duración del ciclo cambia y la parrilla se desplaza. Se aplica al vencer la caché (10 min por defecto) o con `POST /JellyChannels/channels/refresh`.
 - Reproducir en direct play depende de que el códec del fichero sea compatible con el cliente. Sin transcodificación, un fichero no soportado simplemente no se verá.
 - Los anuncios deben tener duración conocida. Habrá que leerla desde Jellyfin si están en la biblioteca, o con una librería de metadatos si son ficheros sueltos.
-- Si más adelante se quiere marca de agua grabada o salida HLS real, habrá que aceptar ffmpeg como dependencia en ese modo.
+- Si más adelante se quiere marca de agua grabada o salida HLS real, habrá que aceptar ffmpeg como dependencia en ese modo. El remux de la v0.5 ya usa ffmpeg, pero solo para copiar pistas.
 - YouTube cambia con frecuencia y `yt-dlp` necesita mantenerse actualizado, así que las descargas pueden fallar hasta actualizarlo.
 - Si una descarga no termina a tiempo, el canal salta ese item. Por eso el margen de prefetch importa.
 - Descargar de YouTube puede incumplir sus condiciones de servicio: función opcional y desactivada por defecto.
@@ -230,5 +257,5 @@ La DLL queda en `Jellyfin.Plugin.JellyChannels/bin/Release/net10.0/Jellyfin.Plug
 - [ ] v0.2: ventana propia con marca de agua
 - [ ] v0.3: anuncios
 - [ ] v0.4: página de configuración completa
-- [ ] v0.5: remux `-c copy` opcional
+- [x] v0.5: remux `-c copy` opcional
 - [ ] v0.6: fuentes de YouTube con descarga y borrado a demanda

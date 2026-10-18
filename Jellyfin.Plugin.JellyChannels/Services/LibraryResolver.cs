@@ -82,6 +82,7 @@ public class LibraryResolver : ILibraryResolver
             OfficialRating = item.OfficialRating,
             Genres = item.Genres ?? [],
             Kind = item.GetBaseItemKind().ToString(),
+            Path = item.IsFileProtocol && !string.IsNullOrEmpty(item.Path) ? item.Path : null,
             ImageItemId = imageItemId
         };
     }

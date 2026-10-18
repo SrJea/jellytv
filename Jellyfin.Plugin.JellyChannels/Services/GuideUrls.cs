@@ -40,6 +40,17 @@ public sealed record GuideUrls(string BaseUrl, string? ApiKey)
     }
 
     /// <summary>
+    /// URL del stream continuo remuxado de un canal.
+    /// </summary>
+    /// <param name="channel">El canal.</param>
+    /// <returns>La URL.</returns>
+    public string Live(Channel channel)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        return WithKey($"{BaseUrl}/JellyChannels/channels/{Uri.EscapeDataString(channel.Id)}/live.ts");
+    }
+
+    /// <summary>
     /// URL de un fichero de la carpeta assets, o la propia URL si ya es absoluta.
     /// </summary>
     /// <param name="file">Nombre de fichero o URL.</param>
