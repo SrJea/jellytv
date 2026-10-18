@@ -276,6 +276,21 @@ La DLL queda en `Jellyfin.Plugin.JellyChannels/bin/Release/net10.0/Jellyfin.Plug
 
 Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así que no necesitan ffmpeg instalado.
 
+## Crear canales: el editor visual
+
+En el menú lateral, *Complementos* > *JellyChannels*. Pensado para usarse también desde el móvil.
+
+1. **Nuevo canal**: nombre, número (0 usa el siguiente libre), días de guía, orden (en orden, aleatorio distinto en cada vuelta o aleatorio fijo) y un logo opcional (URL o fichero de la carpeta `assets` del plugin).
+2. **Fuentes**, en el orden en que se emiten. Cada botón abre un selector:
+   - *Serie*, *Película*, *Colección*: buscador sobre tu biblioteca, con póster. Se pueden añadir varias sin cerrarlo.
+   - *Tag*: los tags de tu biblioteca como botones, o uno escrito a mano.
+   - *YouTube*: URL o id de un vídeo y qué hacer con el fichero descargado (borrarlo al emitirse, conservarlo unos días o siempre). Avisa si la URL no es de un vídeo (por ejemplo una lista de reproducción) y si YouTube está desactivado en los ajustes.
+   - Cada fuente se puede subir, bajar o quitar. Si una fuente apunta a algo que ya no existe en la biblioteca, se marca en ámbar.
+3. **Guardar**. La lista de canales muestra cuántos items resuelven las fuentes, lo que dura una vuelta de la parrilla y lo que se está emitiendo ahora; si ahí pone «sin items», las fuentes no han dado contenido.
+4. *Avanzado: JSON del canal* enseña el canal entero, con los campos que el editor no toca (`seed`, `startDate`, `watermark`, `ads`), y permite editarlo a mano.
+
+Los ajustes del plugin (general, remux, YouTube) están más abajo en la misma página, plegados por secciones.
+
 ## Instalación desde el repositorio de Jellyfin
 
 Cada versión se publica como un release de GitHub con dos assets: el ZIP del plugin y un `manifest.json` de repositorio de Jellyfin. Esa URL siempre apunta al manifiesto del último release:
@@ -323,9 +338,9 @@ El ZIP y el manifiesto salen de la misma ejecución, así que el checksum del ma
 
 ## Hoja de ruta
 
-- [x] v0.1: canales, parrilla, M3U y XMLTV (incluye resolución por serie, película, colección y tag, y un editor JSON básico en la página de ajustes)
+- [x] v0.1: canales, parrilla, M3U y XMLTV (incluye resolución por serie, película, colección y tag, y un editor visual de canales en la página de ajustes)
 - [ ] v0.2: ventana propia con marca de agua
 - [ ] v0.3: anuncios
-- [ ] v0.4: página de configuración completa
+- [ ] v0.4: página de configuración completa (hecho: editor visual de canales y ajustes; falta la marca de agua y los anuncios, que llegan con la v0.2 y la v0.3)
 - [x] v0.5: remux `-c copy` opcional
 - [x] v0.6: fuentes de YouTube con descarga y borrado a demanda (vídeos sueltos)
