@@ -211,9 +211,8 @@ Jellyfin.Plugin.JellyChannels/
 │   └── player.css
 └── Jellyfin.Plugin.JellyChannels.csproj
 Jellyfin.Plugin.JellyChannels.Tests/  # Tests xUnit (motor, EPG, M3U, almacén, remux, YouTube)
-repo/                                 # Repositorio de plugins de Jellyfin: manifest.json + ZIP por versión
-scripts/publish-repo.sh               # Construye con jprm y añade la versión a repo/
-.github/workflows/publish-repo.yaml   # Lo ejecuta al subir la versión en build.yaml a main
+scripts/build-release.sh              # Construye con jprm el ZIP y el manifest.json de un release (en dist/)
+.github/workflows/release.yaml        # Al subir una etiqueta v<versión>: tests, build y release de GitHub
 ```
 
 ## API
@@ -264,7 +263,7 @@ Si `id` de un canal no se indica al crearlo, se genera a partir del nombre (`Can
 9. **Configuración**: página de ajustes para crear y editar canales, elegir fuentes, logo, marca de agua y carpeta de anuncios.
 10. **Opcional**: remux `-c copy` para Live TV continuo, con interruptor en ajustes.
 11. **YouTube**: `YoutubeCache` con lectura de metadatos, tarea de prefetch, descarga con `yt-dlp`, política de retención y límite de disco. Endpoint de caché con soporte `Range`.
-12. **Empaquetado**: generar el ZIP del plugin con su `meta.json` y publicar un manifiesto de repositorio para instalarlo desde Jellyfin. Hecho: `scripts/publish-repo.sh` y `repo/`.
+12. **Empaquetado**: generar el ZIP del plugin con su `meta.json` y publicar un manifiesto de repositorio para instalarlo desde Jellyfin. Hecho: `scripts/build-release.sh` y el workflow de release.
 
 ## Compilar y probar
 
@@ -279,23 +278,26 @@ Los tests del remux usan un ejecutor de ffmpeg falso y un reloj controlado, así
 
 ## Instalación desde el repositorio de Jellyfin
 
-El proyecto es su propio repositorio de plugins: `repo/manifest.json` y los ZIP de cada versión en `repo/jellychannels/`.
+Cada versión se publica como un release de GitHub con dos assets: el ZIP del plugin y un `manifest.json` de repositorio de Jellyfin. Esa URL siempre apunta al manifiesto del último release:
 
 1. En Jellyfin: Panel > Plugins > Repositorios > `+`.
    - Nombre: `JellyChannels`.
-   - URL: `https://raw.githubusercontent.com/SrJea/jellytv/main/repo/manifest.json`.
+   - URL: `https://github.com/SrJea/jellytv/releases/latest/download/manifest.json`.
 2. Panel > Plugins > Catálogo > JellyChannels (categoría *Live TV*) > Instalar y reiniciar Jellyfin.
 3. Panel > Plugins > JellyChannels para configurarlo. Cuando salga una versión nueva, Jellyfin la ofrecerá como cualquier otra actualización.
 
-**Requisito: el repositorio de GitHub tiene que ser público.** Jellyfin descarga el manifiesto y el ZIP sin credenciales, y `raw.githubusercontent.com` devuelve 404 para un repo privado. Si no quieres publicarlo, sirve la carpeta `repo/` desde cualquier web que alcance tu servidor (nginx, otro hosting estático) y regenera el manifiesto con esa URL: `REPO_BASE_URL=https://mi-servidor/repo FORCE=1 scripts/publish-repo.sh`.
+Si prefieres instalarlo a mano, descarga el ZIP del release y descomprímelo en `<datos de Jellyfin>/plugins/JellyChannels_<versión>/`.
+
+**Requisito: el repositorio de GitHub tiene que ser público.** Jellyfin descarga el manifiesto y el ZIP sin credenciales, y las descargas de un release de un repo privado devuelven 404 sin ellas.
 
 **Publicar una versión nueva**
 
 1. Sube `version` en `build.yaml` y en `Directory.Build.props` (deben coincidir) y añade la línea al `changelog` de `build.yaml`.
-2. Súbelo a `main`. El workflow `.github/workflows/publish-repo.yaml` pasa los tests, construye el ZIP con [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager), lo añade a `repo/` y lo commitea.
-3. A mano, sin Actions: `pip install jprm && scripts/publish-repo.sh` y commitea `repo/`.
+2. Haz commit y sube una etiqueta con esa versión: `git tag v0.7.0.0 && git push origin v0.7.0.0`.
+3. El workflow `.github/workflows/release.yaml` comprueba que la etiqueta coincide con la versión, pasa los tests, construye el ZIP con [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager), añade la versión al manifiesto del release anterior (para que el catálogo conserve las versiones viejas) y crea el release con `dist/*.zip` y `manifest.json`.
+4. Sin Actions: `pip install jprm && scripts/build-release.sh` deja el ZIP, el manifiesto y las notas en `dist/`. Se suben a mano a un release (`gh release create v0.7.0.0 dist/*.zip dist/manifest.json --notes-file dist/RELEASE_NOTES.md`).
 
-El script se niega a republicar una versión que ya está en el manifiesto: cambiaría el ZIP y su checksum bajo los pies de quien ya la tenga instalada. Si hay que corregir algo, publica una versión nueva.
+El ZIP y el manifiesto salen de la misma ejecución, así que el checksum del manifiesto siempre es el del ZIP del release. Una versión publicada no se vuelve a subir: cambiaría el ZIP y su checksum bajo quien ya la tenga instalada; si hay que corregir algo, publica una versión nueva.
 
 ## Instalación manual (una vez compilado)
 

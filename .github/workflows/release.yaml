@@ -1,0 +1,62 @@
+name: Publicar release
+
+# Al subir una etiqueta v<versión> (por ejemplo v0.6.0.0) construye el plugin y crea un release de GitHub
+# con el ZIP y el manifest.json del repositorio de Jellyfin como assets. La etiqueta debe coincidir con la
+# versión de build.yaml.
+#
+# En Jellyfin se añade como repositorio la URL
+#   https://github.com/<usuario>/<repo>/releases/latest/download/manifest.json
+# que siempre apunta al manifiesto del último release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar que la etiqueta coincide con la versión
+        run: |
+          version=$(sed -n 's/^version: "\(.*\)"/\1/p' build.yaml)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "La etiqueta $GITHUB_REF_NAME no coincide con la versión de build.yaml (v$version)." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Instalar jprm
+        run: pip install jprm
+
+      - name: Tests
+        run: dotnet test Jellyfin.Plugin.JellyChannels.slnx --configuration Release
+
+      - name: Manifiesto del release anterior
+        run: gh release download --repo "$GITHUB_REPOSITORY" --pattern manifest.json --dir previous || echo "No hay release anterior."
+
+      - name: Construir el ZIP y el manifiesto
+        env:
+          RELEASE_URL_BASE: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          PREVIOUS_MANIFEST: previous/manifest.json
+        run: scripts/build-release.sh
+
+      - name: Crear el release
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/manifest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "JellyChannels ${GITHUB_REF_NAME#v}" \
+            --notes-file dist/RELEASE_NOTES.md \
+            --verify-tag
