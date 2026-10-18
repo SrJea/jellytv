@@ -1,8 +1,10 @@
 name: Publicar release
 
-# Al subir una etiqueta v<versión> (por ejemplo v0.6.0.0) construye el plugin y crea un release de GitHub
-# con el ZIP y el manifest.json del repositorio de Jellyfin como assets. La etiqueta debe coincidir con la
-# versión de build.yaml.
+# Construye el plugin y crea un release de GitHub con el ZIP y el manifest.json del repositorio de
+# Jellyfin como assets. Se lanza de dos maneras:
+#   - Subiendo una etiqueta v<versión> (por ejemplo v0.6.0.0), que debe coincidir con la versión de build.yaml.
+#   - A mano, desde Actions > Publicar release > Run workflow: crea la etiqueta v<versión> sobre el commit
+#     de la rama elegida (la workflow_dispatch solo aparece cuando este fichero está en la rama por defecto).
 #
 # En Jellyfin se añade como repositorio la URL
 #   https://github.com/<usuario>/<repo>/releases/latest/download/manifest.json
@@ -10,6 +12,7 @@ name: Publicar release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,13 +25,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Comprobar que la etiqueta coincide con la versión
+      - name: Calcular la etiqueta y comprobar que coincide con la versión
         run: |
           version=$(sed -n 's/^version: "\(.*\)"/\1/p' build.yaml)
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "La etiqueta $GITHUB_REF_NAME no coincide con la versión de build.yaml (v$version)." >&2
             exit 1
           fi
+          echo "TAG=v$version" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -49,14 +53,13 @@ jobs:
 
       - name: Construir el ZIP y el manifiesto
         env:
-          RELEASE_URL_BASE: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
           PREVIOUS_MANIFEST: previous/manifest.json
-        run: scripts/build-release.sh
+        run: RELEASE_URL_BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}" scripts/build-release.sh
 
       - name: Crear el release
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/manifest.json \
+          gh release create "$TAG" dist/*.zip dist/manifest.json \
             --repo "$GITHUB_REPOSITORY" \
-            --title "JellyChannels ${GITHUB_REF_NAME#v}" \
-            --notes-file dist/RELEASE_NOTES.md \
-            --verify-tag
+            --target "$GITHUB_SHA" \
+            --title "JellyChannels ${TAG#v}" \
+            --notes-file dist/RELEASE_NOTES.md

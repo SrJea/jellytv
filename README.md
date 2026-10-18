@@ -293,7 +293,7 @@ Si prefieres instalarlo a mano, descarga el ZIP del release y descomprímelo en 
 **Publicar una versión nueva**
 
 1. Sube `version` en `build.yaml` y en `Directory.Build.props` (deben coincidir) y añade la línea al `changelog` de `build.yaml`.
-2. Haz commit y sube una etiqueta con esa versión: `git tag v0.7.0.0 && git push origin v0.7.0.0`.
+2. Haz commit en `main` y lanza el workflow de una de estas dos formas: subiendo una etiqueta con esa versión (`git tag v0.7.0.0 && git push origin v0.7.0.0`) o desde GitHub, Actions > *Publicar release* > *Run workflow* (crea él la etiqueta).
 3. El workflow `.github/workflows/release.yaml` comprueba que la etiqueta coincide con la versión, pasa los tests, construye el ZIP con [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager), añade la versión al manifiesto del release anterior (para que el catálogo conserve las versiones viejas) y crea el release con `dist/*.zip` y `manifest.json`.
 4. Sin Actions: `pip install jprm && scripts/build-release.sh` deja el ZIP, el manifiesto y las notas en `dist/`. Se suben a mano a un release (`gh release create v0.7.0.0 dist/*.zip dist/manifest.json --notes-file dist/RELEASE_NOTES.md`).
 
